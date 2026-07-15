@@ -7,7 +7,7 @@ using UnityEngine.Networking;
 
 // --- JSON Data Structures ---
 [Serializable]
-public class ASNPlacementData
+public class WireSyndicatePlacementData
 {
     public string placement_id;
     public string format;
@@ -17,7 +17,7 @@ public class ASNPlacementData
 }
 
 [Serializable]
-public class ASNCacheEntry 
+public class WireSyndicateCacheEntry 
 {
     public string urlHash;
     public string localFileName;
@@ -25,36 +25,36 @@ public class ASNCacheEntry
 }
 
 [Serializable]
-public class ASNCacheManifest 
+public class WireSyndicateCacheManifest 
 {
-    public List<ASNCacheEntry> entries = new List<ASNCacheEntry>();
+    public List<WireSyndicateCacheEntry> entries = new List<WireSyndicateCacheEntry>();
 }
 
 [Serializable]
-public class ASNPayload
+public class WireSyndicatePayload
 {
     public bool success;
     public string timestamp;
-    public List<ASNPlacementData> placements;
+    public List<WireSyndicatePlacementData> placements;
 }
 
-public class ASNManager : MonoBehaviour
+public class WireSyndicateManager : MonoBehaviour
 {
     [Header("Configuration")]
-    [Tooltip("The unique ID for this specific game, generated in the ASN Dashboard.")]
+    [Tooltip("The unique ID for this specific game, generated in the WireSyndicate Dashboard.")]
     public string gameId;
 
-    [Tooltip("The live API endpoint for the ASN active contracts route.")]
+    [Tooltip("The live API endpoint for the WireSyndicate active contracts route.")]
     public string apiBaseUrl = "http://localhost:3000/api/v1/active-contracts";
 
     // --- Cache Paths ---
-    private string CacheDirectory => Path.Combine(Application.persistentDataPath, "ASN_Cache");
-    private string ManifestPath => Path.Combine(CacheDirectory, "asn_manifest.json");
+    private string CacheDirectory => Path.Combine(Application.persistentDataPath, "WireSyndicate_Cache");
+    private string ManifestPath => Path.Combine(CacheDirectory, "WireSyndicate_manifest.json");
 
-    private ASNCacheManifest _manifest;
+    private WireSyndicateCacheManifest _manifest;
     private Dictionary<string, Texture2D> activeTextures = new Dictionary<string, Texture2D>();
 
-    public static ASNManager Instance { get; private set; }
+    public static WireSyndicateManager Instance { get; private set; }
 
     private void Awake()
     {
@@ -90,11 +90,11 @@ public class ASNManager : MonoBehaviour
         if (File.Exists(ManifestPath))
         {
             string json = File.ReadAllText(ManifestPath);
-            _manifest = JsonUtility.FromJson<ASNCacheManifest>(json) ?? new ASNCacheManifest();
+            _manifest = JsonUtility.FromJson<WireSyndicateCacheManifest>(json) ?? new WireSyndicateCacheManifest();
         }
         else
         {
-            _manifest = new ASNCacheManifest();
+            _manifest = new WireSyndicateCacheManifest();
         }
     }
 
@@ -103,7 +103,7 @@ public class ASNManager : MonoBehaviour
         if (_manifest == null || _manifest.entries.Count == 0) return;
 
         DateTime currentTime = DateTime.UtcNow;
-        List<ASNCacheEntry> validEntries = new List<ASNCacheEntry>();
+        List<WireSyndicateCacheEntry> validEntries = new List<WireSyndicateCacheEntry>();
         bool manifestChanged = false;
 
         foreach (var entry in _manifest.entries)
@@ -119,11 +119,11 @@ public class ASNManager : MonoBehaviour
                         try
                         {
                             File.Delete(filePath);
-                            Debug.Log($"[ASN Cache] Purged expired asset: {entry.localFileName}");
+                            Debug.Log($"[WireSyndicate Cache] Purged expired asset: {entry.localFileName}");
                         }
                         catch (Exception e)
                         {
-                            Debug.LogError($"[ASN Cache] Failed to delete file {filePath}: {e.Message}");
+                            Debug.LogError($"[WireSyndicate Cache] Failed to delete file {filePath}: {e.Message}");
                         }
                     }
                     manifestChanged = true;
@@ -149,7 +149,7 @@ public class ASNManager : MonoBehaviour
         // Remove existing entry if updating
         _manifest.entries.RemoveAll(e => e.urlHash == hash);
 
-        _manifest.entries.Add(new ASNCacheEntry
+        _manifest.entries.Add(new WireSyndicateCacheEntry
         {
             urlHash = hash,
             localFileName = localFileName,
@@ -172,7 +172,7 @@ public class ASNManager : MonoBehaviour
     private IEnumerator FetchActiveContracts()
     {
         string requestUrl = $"{apiBaseUrl}?game_id={gameId}";
-        Debug.Log($"[ASN] Fetching contracts from: {requestUrl}");
+        Debug.Log($"[WireSyndicate] Fetching contracts from: {requestUrl}");
 
         using (UnityWebRequest webRequest = UnityWebRequest.Get(requestUrl))
         {
@@ -180,16 +180,16 @@ public class ASNManager : MonoBehaviour
 
             if (webRequest.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError($"[ASN] API Error: {webRequest.error}");
+                Debug.LogError($"[WireSyndicate] API Error: {webRequest.error}");
                 yield break;
             }
 
             string json = webRequest.downloadHandler.text;
-            ASNPayload response = JsonUtility.FromJson<ASNPayload>(json);
+            WireSyndicatePayload response = JsonUtility.FromJson<WireSyndicatePayload>(json);
 
             if (response != null && response.success && response.placements != null)
             {
-                Debug.Log($"[ASN] Found {response.placements.Count} active contracts. Processing assets...");
+                Debug.Log($"[WireSyndicate] Found {response.placements.Count} active contracts. Processing assets...");
                 
                 foreach (var placement in response.placements)
                 {
@@ -198,12 +198,12 @@ public class ASNManager : MonoBehaviour
             }
             else
             {
-                Debug.LogWarning("[ASN] Payload parsed, but no active placements found or success flag was false.");
+                Debug.LogWarning("[WireSyndicate] Payload parsed, but no active placements found or success flag was false.");
             }
         }
     }
 
-    private IEnumerator LoadOrDownloadTexture(ASNPlacementData placementData)
+    private IEnumerator LoadOrDownloadTexture(WireSyndicatePlacementData placementData)
     {
         string safeFileName = placementData.asset_url.GetHashCode().ToString() + ".png";
         string localFilePath = Path.Combine(CacheDirectory, safeFileName); // UPDATED to use CacheDirectory
@@ -213,7 +213,7 @@ public class ASNManager : MonoBehaviour
         // Step 1: Check Disk Cache
         if (File.Exists(localFilePath))
         {
-            Debug.Log($"[ASN] Found cached texture on disk for placement: {placementData.placement_id}");
+            Debug.Log($"[WireSyndicate] Found cached texture on disk for placement: {placementData.placement_id}");
             byte[] fileData = File.ReadAllBytes(localFilePath);
             textureToApply = new Texture2D(2, 2);
             textureToApply.LoadImage(fileData); 
@@ -221,7 +221,7 @@ public class ASNManager : MonoBehaviour
         // Step 2: Download & Cache
         else
         {
-            Debug.Log($"[ASN] Downloading new texture from network for placement: {placementData.placement_id}");
+            Debug.Log($"[WireSyndicate] Downloading new texture from network for placement: {placementData.placement_id}");
             
             using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(placementData.asset_url))
             {
@@ -235,11 +235,11 @@ public class ASNManager : MonoBehaviour
                     File.WriteAllBytes(localFilePath, uwr.downloadHandler.data);
                     RegisterDownloadedAsset(placementData.asset_url, safeFileName, placementData.contract_end_date);
                     
-                    Debug.Log($"[ASN] Successfully cached texture to disk and registered in manifest: {localFilePath}");
+                    Debug.Log($"[WireSyndicate] Successfully cached texture to disk and registered in manifest: {localFilePath}");
                 }
                 else
                 {
-                    Debug.LogError($"[ASN] Failed to download texture: {uwr.error}");
+                    Debug.LogError($"[WireSyndicate] Failed to download texture: {uwr.error}");
                 }
             }
         }
@@ -248,7 +248,7 @@ public class ASNManager : MonoBehaviour
         if (textureToApply != null)
         {
             activeTextures[placementData.placement_id] = textureToApply;
-            Debug.Log($"[ASN] Texture ready in memory for placement: {placementData.placement_id}");
+            Debug.Log($"[WireSyndicate] Texture ready in memory for placement: {placementData.placement_id}");
         }
     }
 

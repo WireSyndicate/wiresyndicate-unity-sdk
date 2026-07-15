@@ -4,9 +4,9 @@ using UnityEngine;
 // THE ARCHITECT'S LESSON: 
 // [RequireComponent] is excellent defensive programming. It ensures our 
 // GetPropertyBlock calls never throw NullReferenceExceptions.
-// [ASN UPDATE]: 100% compatible with Persistent Disk Caching architecture.
+// [WireSyndicate UPDATE]: 100% compatible with Persistent Disk Caching architecture.
 [RequireComponent(typeof(Renderer))]
-public class ASNPlacement : MonoBehaviour
+public class WireSyndicatePlacement : MonoBehaviour
 {
     [Header("Placement Configuration")]
     [Tooltip("The unique placement_id from the Supabase dashboard.")]
@@ -31,7 +31,7 @@ public class ASNPlacement : MonoBehaviour
     {
         if (string.IsNullOrEmpty(placementId))
         {
-            Debug.LogWarning($"[ASN] The placement object '{gameObject.name}' is missing a Placement ID!");
+            Debug.LogWarning($"[WireSyndicate] The placement object '{gameObject.name}' is missing a Placement ID!");
             return;
         }
 
@@ -39,13 +39,13 @@ public class ASNPlacement : MonoBehaviour
     }
 
     /// <summary>
-    /// Checks the ASNManager for the texture. Features a timeout to prevent infinite CPU polling 
+    /// Checks the WireSyndicateManager for the texture. Features a timeout to prevent infinite CPU polling 
     /// if the placement has no active contract.
     /// </summary>
     private IEnumerator WaitForTexture()
     {
         // Safety check: Wait until the Manager Singleton actually wakes up
-        while (ASNManager.Instance == null)
+        while (WireSyndicateManager.Instance == null)
         {
             yield return null;
         }
@@ -61,7 +61,7 @@ public class ASNPlacement : MonoBehaviour
 
         while (appliedTexture == null && currentAttempt < maxAttempts)
         {
-            appliedTexture = ASNManager.Instance.GetTextureForPlacement(placementId);
+            appliedTexture = WireSyndicateManager.Instance.GetTextureForPlacement(placementId);
             
             if (appliedTexture == null)
             {
@@ -77,7 +77,7 @@ public class ASNPlacement : MonoBehaviour
         }
         else
         {
-            Debug.Log($"[ASN] Placement '{placementId}' timed out. Assuming no active contract. Default texture retained.");
+            Debug.Log($"[WireSyndicate] Placement '{placementId}' timed out. Assuming no active contract. Default texture retained.");
         }
     }
 
@@ -90,6 +90,6 @@ public class ASNPlacement : MonoBehaviour
         _propBlock.SetTexture(texturePropertyName, texture);
         _renderer.SetPropertyBlock(_propBlock);
 
-        Debug.Log($"[ASN] Viewable texture applied securely to '{gameObject.name}' (Placement: {placementId}).");
+        Debug.Log($"[WireSyndicate] Viewable texture applied securely to '{gameObject.name}' (Placement: {placementId}).");
     }
 }
