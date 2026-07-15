@@ -1,0 +1,18 @@
+﻿{
+    "name": "com.wiresyndicate.sdk.editor",
+    "rootNamespace": "WireSyndicate.Editor",
+    "references": [
+        "com.wiresyndicate.sdk"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
