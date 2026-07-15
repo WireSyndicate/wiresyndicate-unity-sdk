@@ -1,5 +1,5 @@
 {
-    "name": "WireSyndicate.UnitySDK",
+    "name": "WireSyndicate",
     "rootNamespace": "WireSyndicate",
     "references": [],
     "includePlatforms": [],
