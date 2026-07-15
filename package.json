@@ -1,0 +1,12 @@
+{
+  "name": "com.wiresyndicate.sdk",
+  "version": "1.0.0-rc.1",
+  "displayName": "WireSyndicate Spatial SDK",
+  "description": "Core SDK for the WireSyndicate programmatic spatial network.",
+  "unity": "2022.3",
+  "keywords": [
+    "wiresyndicate",
+    "spatial",
+    "sdk"
+  ]
+}
