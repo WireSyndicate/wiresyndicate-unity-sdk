@@ -1,5 +1,5 @@
-{
-    "name": "WireSyndicate",
+﻿{
+    "name": "com.wiresyndicate.sdk",
     "rootNamespace": "WireSyndicate",
     "references": [],
     "includePlatforms": [],
