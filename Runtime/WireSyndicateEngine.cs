@@ -69,6 +69,9 @@ namespace WireSyndicate.Core
 
             Config = config;
 
+            // Execute the Ephemeral Token Handshake immediately
+            _ = WireSyndicate.SDK.WSTelemetryDispatcher.AuthenticateAsync(config.OrgId);
+
             GameObject coreObj = new GameObject("[WireSyndicate_InternalEngine]");
             UnityEngine.Object.DontDestroyOnLoad(coreObj);
             _coreBehaviour = coreObj.AddComponent<WireSyndicateCoreBehaviour>();
@@ -226,6 +229,32 @@ namespace WireSyndicate.Core
             }
         }
 
+        private async System.Threading.Tasks.Task<Texture2D> LoadTextureAsync(string filePath)
+        {
+            // Ensure the path is properly formatted for local file requests
+            string uri = "file://" + filePath.Replace("\\", "/");
+
+            using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(uri))
+            {
+                var asyncOperation = uwr.SendWebRequest();
+
+                // Yield back to the Unity main thread until the native worker finishes decoding
+                while (!asyncOperation.isDone)
+                {
+                    await System.Threading.Tasks.Task.Yield();
+                }
+
+                if (uwr.result != UnityWebRequest.Result.Success)
+                {
+                    if (WireSyndicateEngine.Config.EnableDebugLogging)
+                        Debug.LogError($"[WireSyndicate] Failed to load cached texture asynchronously: {uwr.error}");
+                    return null;
+                }
+
+                return DownloadHandlerTexture.GetContent(uwr);
+            }
+        }
+
         private IEnumerator LoadOrDownloadTexture(WireSyndicatePlacementData placementData)
         {
             string safeFileName = placementData.asset_url.GetHashCode().ToString() + ".png";
@@ -235,9 +264,9 @@ namespace WireSyndicate.Core
 
             if (File.Exists(localFilePath))
             {
-                byte[] fileData = File.ReadAllBytes(localFilePath);
-                textureToApply = new Texture2D(2, 2);
-                textureToApply.LoadImage(fileData); 
+                var loadTask = LoadTextureAsync(localFilePath);
+                yield return new WaitUntil(() => loadTask.IsCompleted);
+                textureToApply = loadTask.Result;
             }
             else
             {

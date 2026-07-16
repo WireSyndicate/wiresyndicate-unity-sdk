@@ -181,8 +181,11 @@ namespace WireSyndicate.SDK
             // 4. Occlusion Check (Physics.Raycast single-hit)
             if (Physics.Raycast(cameraPos, dirToNode, out RaycastHit hitInfo, distanceToNode - 0.01f, occlusionMask))
             {
-                // If we hit anything on the occlusion mask before reaching the node, it is blocked
-                if (hitInfo.collider.gameObject != node.gameObject)
+                // If we hit anything on the occlusion mask before reaching the target, it is blocked.
+                // We check if the hit collider is part of the same hierarchy as the target node.
+                WSPlacementNode hitNode = hitInfo.collider.GetComponentInParent<WSPlacementNode>();
+                
+                if (hitNode != node)
                 {
                     return false;
                 }

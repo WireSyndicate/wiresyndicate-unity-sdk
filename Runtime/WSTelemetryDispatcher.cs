@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -18,12 +20,15 @@ namespace WireSyndicate.SDK
     {
         public static WSTelemetryDispatcher Instance { get; private set; }
 
-        [Header("Configuration")]
-        [Tooltip("The Edge network telemetry endpoint.")]
-        public string telemetryEndpoint = "https://api.wiresyndicate.com/api/v1/telemetry/impressions";
+        private const string HANDSHAKE_URL = "https://api.wiresyndicate.com/api/v1/auth/handshake";
+        private const string TELEMETRY_URL = "https://api.wiresyndicate.com/api/v1/telemetry/impressions";
 
         [Tooltip("The UUID of this specific game, registered in the Developer Dashboard.")]
         public string gameId;
+
+        private static string _sessionToken;
+        private static string _handshakeSecret;
+        private static bool _isAuthenticated = false;
 
         private void Awake()
         {
@@ -38,6 +43,42 @@ namespace WireSyndicate.SDK
             }
         }
 
+        public static async Task<bool> AuthenticateAsync(string networkKey)
+        {
+            HandshakeRequest requestData = new HandshakeRequest { network_key = networkKey };
+            string jsonBody = JsonUtility.ToJson(requestData);
+
+            using (UnityWebRequest request = new UnityWebRequest(HANDSHAKE_URL, "POST"))
+            {
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                var operation = request.SendWebRequest();
+                while (!operation.isDone) await Task.Yield();
+
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogError($"[WireSyndicate] FATAL: Zero-Trust Handshake Failed. {request.error}");
+                    return false;
+                }
+
+                var response = JsonUtility.FromJson<HandshakeResponse>(request.downloadHandler.text);
+                
+                if (response.success)
+                {
+                    _sessionToken = response.session_token;
+                    _handshakeSecret = response.handshake_secret;
+                    _isAuthenticated = true;
+                    Debug.Log("[WireSyndicate] Cryptographic Handshake Established.");
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
         public void DispatchImpression(string placementId, float durationSeconds, float screenCoverage)
         {
             if (string.IsNullOrEmpty(gameId))
@@ -46,38 +87,53 @@ namespace WireSyndicate.SDK
                 return;
             }
 
+            int durationMs = Mathf.RoundToInt(durationSeconds * 1000f);
+            
+            // Dispatch async without waiting in the synchronous method
+            _ = DispatchImpressionAsync(placementId, durationMs, screenCoverage);
+        }
+
+        private async Task<bool> DispatchImpressionAsync(string placementId, int durationMs, float screenCoverage)
+        {
+            if (!_isAuthenticated)
+            {
+                Debug.LogError("[WireSyndicate] Cannot dispatch telemetry: SDK lacks a valid session token.");
+                return false;
+            }
+
             TelemetryPayload payload = new TelemetryPayload
             {
                 placementId = placementId,
                 gameId = gameId,
-                durationMs = Mathf.RoundToInt(durationSeconds * 1000f),
+                durationMs = durationMs,
                 screenCoverage = screenCoverage
             };
-
             string jsonPayload = JsonUtility.ToJson(payload);
-            StartCoroutine(PostTelemetryRoutine(jsonPayload));
-        }
 
-        private IEnumerator PostTelemetryRoutine(string jsonPayload)
-        {
-            using (UnityWebRequest request = new UnityWebRequest(telemetryEndpoint, "POST"))
+            string signature = WSCryptography.GenerateHMAC(jsonPayload, _handshakeSecret);
+
+            using (UnityWebRequest request = new UnityWebRequest(TELEMETRY_URL, "POST"))
             {
                 byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);
                 request.downloadHandler = new DownloadHandlerBuffer();
+                
                 request.SetRequestHeader("Content-Type", "application/json");
+                
+                request.SetRequestHeader("Authorization", $"Bearer {_sessionToken}");
+                request.SetRequestHeader("X-WS-Signature", signature);
 
-                // Fire and forget logic - we yield until done, but don't block the main thread.
-                yield return request.SendWebRequest();
+                var operation = request.SendWebRequest();
+                while (!operation.isDone) await Task.Yield();
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    Debug.LogWarning($"[WSTelemetryDispatcher] Telemetry drop. Error: {request.error}");
+                    Debug.LogError($"[WireSyndicate] Perimeter Rejected Telemetry: {request.error}");
+                    return false;
                 }
-                else
-                {
-                    Debug.Log($"[WSTelemetryDispatcher] Impression dispatched successfully.");
-                }
+
+                Debug.Log("[WireSyndicate] Signed Token burned. Financial clearing executed.");
+                return true;
             }
         }
     }
