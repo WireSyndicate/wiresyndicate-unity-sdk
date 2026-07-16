@@ -2,7 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace AssetSyndicateNetwork.SDK
+namespace WireSyndicate.SDK
 {
     // The ContractManifest is shared, so we don't need to redefine it if it already exists in WSPlacementDynamic,
     // but to prevent compile errors if this script is used standalone, we can conditionally compile or just assume
