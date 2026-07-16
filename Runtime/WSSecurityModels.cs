@@ -3,13 +3,13 @@ using System;
 namespace WireSyndicate.SDK
 {
     [Serializable]
-    internal class HandshakeRequest
+    public class HandshakeRequest
     {
         public string network_key;
     }
 
     [Serializable]
-    internal class HandshakeResponse
+    public class HandshakeResponse
     {
         public bool success;
         public string session_token;
