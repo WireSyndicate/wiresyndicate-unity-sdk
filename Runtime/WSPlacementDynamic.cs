@@ -11,25 +11,34 @@ namespace WireSyndicate.SDK
     }
 
     // THE ARCHITECT'S LESSON: 
-    // [RequireComponent] is excellent defensive programming. It ensures our 
-    // GetPropertyBlock calls never throw NullReferenceExceptions.
-    [RequireComponent(typeof(Renderer))]
+    // Allowing flexible assignment of targetRenderer prevents structural breakage in LOD hierarchies.
     public class WSPlacementDynamic : MonoBehaviour
     {
         [Header("Placement Configuration")]
         [Tooltip("The unique placement_id from the Supabase dashboard.")]
         public string placementId;
 
+        [Tooltip("The specific renderer to apply textures to. If left empty, it will automatically locate one in children.")]
+        [SerializeField] private Renderer targetRenderer;
+
         [Tooltip("Shader property name for the texture (e.g., _MainTex for Standard, _BaseColorMap for URP/HDRP).")]
         public string texturePropertyName = "_BaseColorMap";
 
+        [Tooltip("The index of the material array on the Renderer. Element 1 = Index 1.")]
+        [SerializeField] private int materialIndex = 0;
+
+        [Tooltip("Forcefully overrides the material's UV Scale/Offset to 1x1, neutralizing texture atlases that could distort the ad.")]
+        [SerializeField] private bool overrideUVScaleOffset = true;
+
         // Internal references
-        private Renderer _renderer;
         private MaterialPropertyBlock _propBlock;
 
         private void Awake()
         {
-            _renderer = GetComponent<Renderer>();
+            if (targetRenderer == null)
+            {
+                targetRenderer = GetComponentInChildren<Renderer>();
+            }
             _propBlock = new MaterialPropertyBlock();
         }
 
@@ -52,9 +61,19 @@ namespace WireSyndicate.SDK
                 // THE ARCHITECT'S LESSON: Non-Destructive Texture Swapping
                 // Using MaterialPropertyBlock prevents the creation of new material instances in memory,
                 // avoiding memory leaks and keeping the base material untouched.
-                _renderer.GetPropertyBlock(_propBlock);
-                _propBlock.SetTexture(texturePropertyName, texture);
-                _renderer.SetPropertyBlock(_propBlock);
+                if (targetRenderer != null)
+                {
+                    targetRenderer.GetPropertyBlock(_propBlock, materialIndex);
+                    _propBlock.SetTexture(texturePropertyName, texture);
+                    
+                    if (overrideUVScaleOffset)
+                    {
+                        // Hijack the atlas math by forcing Scale 1x1 and Offset 0,0
+                        _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
+                    }
+                    
+                    targetRenderer.SetPropertyBlock(_propBlock, materialIndex);
+                }
                 
                 Debug.Log($"[WireSyndicate] Texture swapped successfully for '{gameObject.name}' (Placement: {placementId}).");
             }

@@ -2,18 +2,21 @@ using UnityEngine;
 
 namespace WireSyndicate.SDK
 {
-    [RequireComponent(typeof(Renderer))]
     [RequireComponent(typeof(Collider))]
     public class WSPlacementNode : MonoBehaviour
     {
         [Tooltip("The UUID of the placement registered in the WireSyndicate portal.")]
         public string placementId;
 
-        private Renderer nodeRenderer;
+        [Tooltip("The specific renderer to analyze. If left empty, it will automatically locate one in children.")]
+        [SerializeField] private Renderer targetRenderer;
 
         private void Start()
         {
-            nodeRenderer = GetComponent<Renderer>();
+            if (targetRenderer == null)
+            {
+                targetRenderer = GetComponentInChildren<Renderer>();
+            }
 
             if (string.IsNullOrEmpty(placementId))
             {
@@ -33,7 +36,7 @@ namespace WireSyndicate.SDK
 
         public Bounds GetBounds()
         {
-            return nodeRenderer != null ? nodeRenderer.bounds : GetComponent<Collider>().bounds;
+            return targetRenderer != null ? targetRenderer.bounds : GetComponent<Collider>().bounds;
         }
 
         private void OnDestroy()

@@ -46,24 +46,33 @@ Before any assets can be fetched or telemetry dispatched, you must establish the
 
 ---
 
-## 🎯 Creating Placements
+## 🎯 Creating Placements (Advanced Configuration)
 
-Once the SDK is initialized, you can map physical ad spaces in your 3D world.
+Once the SDK is initialized, you can map physical ad spaces in your 3D world. The zero-trust architecture requires a strict separation of concerns between spatial calculation and visual rendering. 
 
-### 1. Attaching the Placement Node
-The `WSPlacementNode` is the master anchor for your ad spaces. It tells the Gaze Verification Engine where the asset lives in 3D space.
+### 1. The Master Anchor: `WSPlacementNode`
+The `WSPlacementNode` acts as the spatial "brain" of the ad space. It feeds precise bounding box coordinates to the Gaze Verification Engine to calculate occlusion and viewability. 
 
-1. Create a 3D object in your scene (e.g., a Quad or a Cube) where you want the ad to appear.
-2. Ensure it has a **Renderer** and a **Collider** (the Engine requires these to calculate bounds and occlusion).
-3. Click **Add Component** and attach the `WSPlacementNode` script.
-4. In the Inspector, paste the **Placement ID** associated with this specific ad unit (generated from your Developer Portal).
+- **Placement ID:** You must retrieve this unique UUID from the WireSyndicate Network Console and paste it into the Inspector.
+- **Target Renderer (LOD Architecture):** By default, the node will attempt to find a renderer on itself. However, in modern AAA prefabs using `LOD Group` components, the MeshCollider sits on the root, while the Renderers are nested in child objects. 
+  - **Action:** Drag and drop the highest fidelity mesh (e.g., `LOD0`) into the **Target Renderer** slot. This ensures the Gaze Engine calculates physical bounds based on the actual visual geometry, not an empty parent transform.
 
-### 2. Rendering Dynamic Textures
-To render dynamic 2D images (like posters or billboards) onto your placement:
+### 2. Texture Injection: `WSPlacementDynamic`
+For flat surfaces (billboards, posters, terminal screens), this script acts as the "painter", pulling network textures and safely injecting them into memory.
 
-1. Attach the `WSPlacementDynamic` script to the same object.
-2. Ensure the **Placement ID** matches the ID on the `WSPlacementNode`.
-3. The SDK will automatically fetch the active contract texture, securely cache it to disk, and non-destructively swap the Material Property Block at runtime.
+- **Target Renderer:** This **MUST** exactly match the Target Renderer slot defined in your `WSPlacementNode`. If they drift, the visual will render in one place while the telemetry engine tracks another, voiding the impression.
+- **Texture Property Name:** You must supply the exact **Shader Reference ID**. 
+  - *Standard Pipeline:* `_MainTex`
+  - *URP / HDRP:* `_BaseMap` or `_BaseColorMap`
+- **Material Index:** Zero-indexed array routing for complex meshes. If your mesh has multiple materials, you must tell the engine which sub-mesh receives the network ad. (e.g., Element 1 = Index 1).
+
+#### Handling Texture Atlases & UV Grids
+Modern environments often combine multiple textures into a single Atlas Material. When a texture is atlased, Unity relies on the material's **Scale and Transform (ST)** properties to only display a small tile of the larger image. 
+
+- **Override UV Scale & Offset:** This boolean is checked by default. It instructs the SDK to forcefully inject a `Vector4(1, 1, 0, 0)` into the `_ST` component of your Shader Reference ID (e.g., `_BaseMap_ST`). 
+- **Why this is critical:** By hijacking the UV Scale/Offset math, we ensure the network advertisement stretches perfectly across the entire targeted sub-mesh, completely neutralizing texture atlas distortion. If an ad renders distorted, it will trigger a false impression vulnerability. Leave this checked to guarantee visual integrity.
+
+> **Architectural Note:** The engine utilizes a `MaterialPropertyBlock` to execute the texture swap. This is a non-destructive operation that prevents memory leaks and ensures your base materials remain untouched in the project hierarchy.
 
 ### 3. Rendering 3D Assets (Optional)
 To spawn interactive 3D models (like a branded soda can on a table):
