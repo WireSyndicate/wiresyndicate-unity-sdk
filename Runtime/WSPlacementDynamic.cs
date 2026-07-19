@@ -58,24 +58,32 @@ namespace WireSyndicate.SDK
         {
             if (texture != null)
             {
-                // THE ARCHITECT'S LESSON: Non-Destructive Texture Swapping
-                // Using MaterialPropertyBlock prevents the creation of new material instances in memory,
-                // avoiding memory leaks and keeping the base material untouched.
-                if (targetRenderer != null)
+                Debug.Log($"[WSPlacementDynamic] Texture downloaded successfully. Applying to MeshRenderer on '{gameObject.name}'...");
+                try
                 {
-                    targetRenderer.GetPropertyBlock(_propBlock, materialIndex);
-                    _propBlock.SetTexture(texturePropertyName, texture);
-                    
-                    if (overrideUVScaleOffset)
+                    // THE ARCHITECT'S LESSON: Non-Destructive Texture Swapping
+                    // Using MaterialPropertyBlock prevents the creation of new material instances in memory,
+                    // avoiding memory leaks and keeping the base material untouched.
+                    if (targetRenderer != null)
                     {
-                        // Hijack the atlas math by forcing Scale 1x1 and Offset 0,0
-                        _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
+                        targetRenderer.GetPropertyBlock(_propBlock, materialIndex);
+                        _propBlock.SetTexture(texturePropertyName, texture);
+                        
+                        if (overrideUVScaleOffset)
+                        {
+                            // Hijack the atlas math by forcing Scale 1x1 and Offset 0,0
+                            _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
+                        }
+                        
+                        targetRenderer.SetPropertyBlock(_propBlock, materialIndex);
                     }
                     
-                    targetRenderer.SetPropertyBlock(_propBlock, materialIndex);
+                    Debug.Log($"[WireSyndicate] Texture swapped successfully for '{gameObject.name}' (Placement: {placementId}).");
                 }
-                
-                Debug.Log($"[WireSyndicate] Texture swapped successfully for '{gameObject.name}' (Placement: {placementId}).");
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"[WSPlacementDynamic] FATAL: Failed to apply texture to material. Exception: {ex.Message}");
+                }
             }
             else
             {

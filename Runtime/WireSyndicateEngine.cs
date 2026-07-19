@@ -205,17 +205,26 @@ namespace WireSyndicate.Core
 
         private IEnumerator FetchActiveContracts()
         {
-            using (UnityWebRequest webRequest = UnityWebRequest.Get(GetApiUrl()))
+            string url = GetApiUrl();
+            Debug.Log($"[WireSyndicateEngine] Requesting active contracts payload from: {url}...");
+
+            using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
             {
                 yield return webRequest.SendWebRequest();
 
-                if (webRequest.result != UnityWebRequest.Result.Success)
+                if (webRequest.responseCode == 204)
                 {
-                    if (WireSyndicateEngine.Config.EnableDebugLogging)
-                        Debug.LogError($"[WireSyndicate] API Error: {webRequest.error}");
+                    Debug.LogWarning("[WireSyndicateEngine] 204 No Content: No active campaigns won the waterfall. Awaiting default/fallback geometry.");
                     yield break;
                 }
 
+                if (webRequest.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogError($"[WireSyndicateEngine] API Error ({webRequest.responseCode}): {webRequest.error}");
+                    yield break;
+                }
+
+                Debug.Log("[WireSyndicateEngine] Payload received. Extracting asset URLs...");
                 string json = webRequest.downloadHandler.text;
                 WireSyndicatePayload response = JsonUtility.FromJson<WireSyndicatePayload>(json);
 
@@ -279,6 +288,10 @@ namespace WireSyndicate.Core
                         textureToApply = DownloadHandlerTexture.GetContent(uwr);
                         File.WriteAllBytes(localFilePath, uwr.downloadHandler.data);
                         RegisterDownloadedAsset(placementData.asset_url, safeFileName, placementData.contract_end_date);
+                    }
+                    else
+                    {
+                        Debug.LogError($"[WireSyndicateEngine] Texture download failed for URL {placementData.asset_url}: {uwr.error}");
                     }
                 }
             }
