@@ -24,14 +24,15 @@ namespace WireSyndicate.SDK
                 return;
             }
 
-            if (WSGazeVerificationEngine.Instance != null)
+            if (WSGazeVerificationEngine.Instance == null)
             {
-                WSGazeVerificationEngine.Instance.RegisterNode(this);
+                GameObject engineObj = new GameObject("[WireSyndicate_GazeEngine]");
+                engineObj.AddComponent<WSGazeVerificationEngine>();
+                // The engine's Awake method will automatically set the singleton Instance and apply DontDestroyOnLoad
+                Debug.Log("[WSPlacementNode] Auto-bootstrapped missing WSGazeVerificationEngine.");
             }
-            else
-            {
-                Debug.LogError("[WSPlacementNode] WSGazeVerificationEngine instance not found in scene.");
-            }
+
+            WSGazeVerificationEngine.Instance.RegisterNode(this);
         }
 
         public Bounds GetBounds()

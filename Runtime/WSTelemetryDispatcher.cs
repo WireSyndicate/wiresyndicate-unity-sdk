@@ -20,8 +20,8 @@ namespace WireSyndicate.SDK
     {
         public static WSTelemetryDispatcher Instance { get; private set; }
 
-        private const string HANDSHAKE_URL = "https://api.wiresyndicate.com/api/v1/auth/handshake";
-        private const string TELEMETRY_URL = "https://api.wiresyndicate.com/api/v1/telemetry/impressions";
+        [Tooltip("Optional. Leave blank to use Production Edge URL.")]
+        public string apiBaseUrl;
 
         [Tooltip("The UUID of this specific game, registered in the Developer Dashboard.")]
         public string gameId;
@@ -45,10 +45,22 @@ namespace WireSyndicate.SDK
 
         public static async Task<bool> AuthenticateAsync(string networkKey)
         {
+            string baseUrl = Instance != null && !string.IsNullOrWhiteSpace(Instance.apiBaseUrl)
+                ? Instance.apiBaseUrl.Trim()
+                : "https://api.wiresyndicate.com/api/v1";
+
+            if (!baseUrl.StartsWith("http://") && !baseUrl.StartsWith("https://"))
+            {
+                Debug.LogError("[WireSyndicate] Configuration Error: API Base URL is missing or malformed. Please configure the network settings in the WireSyndicate Manager.");
+                return false;
+            }
+
+            string handshakeUrl = baseUrl.TrimEnd('/') + "/auth/handshake";
+
             HandshakeRequest requestData = new HandshakeRequest { network_key = networkKey };
             string jsonBody = JsonUtility.ToJson(requestData);
 
-            using (UnityWebRequest request = new UnityWebRequest(HANDSHAKE_URL, "POST"))
+            using (UnityWebRequest request = new UnityWebRequest(handshakeUrl, "POST"))
             {
                 byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);
@@ -112,7 +124,13 @@ namespace WireSyndicate.SDK
 
             string signature = WSCryptography.GenerateHMAC(jsonPayload, _handshakeSecret);
 
-            using (UnityWebRequest request = new UnityWebRequest(TELEMETRY_URL, "POST"))
+            string baseUrl = Instance != null && !string.IsNullOrWhiteSpace(Instance.apiBaseUrl)
+                ? Instance.apiBaseUrl.Trim()
+                : "https://api.wiresyndicate.com/api/v1";
+                
+            string telemetryUrl = baseUrl.TrimEnd('/') + "/telemetry/impressions";
+
+            using (UnityWebRequest request = new UnityWebRequest(telemetryUrl, "POST"))
             {
                 byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);
