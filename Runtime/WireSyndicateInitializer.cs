@@ -10,6 +10,10 @@ public class WireSyndicateInitializer : MonoBehaviour
     [Tooltip("Your Network Key (org_id) from the Developer Portal")]
     public string networkKey;
 
+    [Header("Network Configuration")]
+    [Tooltip("Target URL. E.g., http://localhost:3000 or https://api.wiresyndicate.com/api/v1")]
+    public string apiBaseUrl = "http://localhost:3000";
+
     private void Awake()
     {
         if (Instance != null && Instance != this)

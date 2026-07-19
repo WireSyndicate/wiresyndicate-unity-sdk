@@ -20,8 +20,6 @@ namespace WireSyndicate.SDK
     {
         public static WSTelemetryDispatcher Instance { get; private set; }
 
-        [Tooltip("Optional. Leave blank to use Production Edge URL.")]
-        public string apiBaseUrl;
 
         [Tooltip("The UUID of this specific game, registered in the Developer Dashboard.")]
         public string gameId;
@@ -45,13 +43,13 @@ namespace WireSyndicate.SDK
 
         public static async Task<bool> AuthenticateAsync(string networkKey)
         {
-            string baseUrl = Instance != null && !string.IsNullOrWhiteSpace(Instance.apiBaseUrl)
-                ? Instance.apiBaseUrl.Trim()
-                : "https://api.wiresyndicate.com/api/v1";
+            string baseUrl = WireSyndicateInitializer.Instance != null && !string.IsNullOrWhiteSpace(WireSyndicateInitializer.Instance.apiBaseUrl)
+                ? WireSyndicateInitializer.Instance.apiBaseUrl.Trim()
+                : "";
 
-            if (!baseUrl.StartsWith("http://") && !baseUrl.StartsWith("https://"))
+            if (string.IsNullOrEmpty(baseUrl) || !baseUrl.StartsWith("http"))
             {
-                Debug.LogError("[WireSyndicate] Configuration Error: API Base URL is missing or malformed. Please configure the network settings in the WireSyndicate Manager.");
+                Debug.LogError("[WireSyndicate] Configuration Error: API Base URL is missing or malformed. Please configure the API URL on the WireSyndicate Initializer.");
                 return false;
             }
 
@@ -124,9 +122,9 @@ namespace WireSyndicate.SDK
 
             string signature = WSCryptography.GenerateHMAC(jsonPayload, _handshakeSecret);
 
-            string baseUrl = Instance != null && !string.IsNullOrWhiteSpace(Instance.apiBaseUrl)
-                ? Instance.apiBaseUrl.Trim()
-                : "https://api.wiresyndicate.com/api/v1";
+            string baseUrl = WireSyndicateInitializer.Instance != null && !string.IsNullOrWhiteSpace(WireSyndicateInitializer.Instance.apiBaseUrl)
+                ? WireSyndicateInitializer.Instance.apiBaseUrl.Trim()
+                : "";
                 
             string telemetryUrl = baseUrl.TrimEnd('/') + "/telemetry/impressions";
 
