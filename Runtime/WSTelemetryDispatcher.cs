@@ -53,7 +53,7 @@ namespace WireSyndicate.SDK
                 return false;
             }
 
-            string handshakeUrl = baseUrl.TrimEnd('/') + "/network/handshake";
+            string handshakeUrl = baseUrl.TrimEnd('/') + "/api/v1/network/handshake";
 
             using (UnityWebRequest request = UnityWebRequest.Get(handshakeUrl))
             {
@@ -128,7 +128,7 @@ namespace WireSyndicate.SDK
                 ? WireSyndicateInitializer.Instance.apiBaseUrl.Trim()
                 : "";
                 
-            string telemetryUrl = baseUrl.TrimEnd('/') + "/telemetry/impressions";
+            string telemetryUrl = baseUrl.TrimEnd('/') + "/api/v1/telemetry/impressions";
 
             using (UnityWebRequest request = new UnityWebRequest(telemetryUrl, "POST"))
             {
