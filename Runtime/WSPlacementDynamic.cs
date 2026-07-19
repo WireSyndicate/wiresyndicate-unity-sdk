@@ -78,6 +78,12 @@ namespace WireSyndicate.SDK
                     // avoiding memory leaks and keeping the base material untouched.
                     if (targetRenderer != null)
                     {
+                        if (materialIndex < 0 || materialIndex >= targetRenderer.sharedMaterials.Length)
+                        {
+                            Debug.LogError($"[WSPlacementDynamic] FATAL: Failed to apply texture on '{gameObject.name}'. The Material Index ({materialIndex}) is out of bounds! The Renderer only has {targetRenderer.sharedMaterials.Length} material(s). Please fix the Material Index in the Inspector.");
+                            return;
+                        }
+
                         targetRenderer.GetPropertyBlock(_propBlock, materialIndex);
                         _propBlock.SetTexture(texturePropertyName, texture);
                         
