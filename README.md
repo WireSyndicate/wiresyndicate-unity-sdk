@@ -69,12 +69,15 @@ For flat surfaces (billboards, posters, terminal screens), this script acts as t
 - **Material Index:** Zero-indexed array routing for complex meshes. If your mesh has multiple materials, you must tell the engine which sub-mesh receives the network ad. (e.g., Element 1 = Index 1).
 
 #### Handling Texture Atlases & UV Grids
-Modern environments often combine multiple textures into a single Atlas Material. When a texture is atlased, Unity relies on the material's **Scale and Transform (ST)** properties to only display a small tile of the larger image. 
+Modern environments often combine multiple textures into a single Atlas Material. When a texture is atlased, Unity relies on the material's **Scale and Transform (ST)** properties, or custom shader properties like `Rows` and `Columns`, to only display a small tile of the larger image. Since injected network ads are single full-resolution images, atlased materials will slice and distort them.
 
-- **Override UV Scale & Offset:** This boolean is checked by default. It instructs the SDK to forcefully inject a `Vector4(1, 1, 0, 0)` into the `_ST` component of your Shader Reference ID (e.g., `_BaseMap_ST`). 
-- **Why this is critical:** By hijacking the UV Scale/Offset math, we ensure the network advertisement stretches perfectly across the entire targeted sub-mesh, completely neutralizing texture atlas distortion. If an ad renders distorted, it will trigger a false impression vulnerability. Leave this checked to guarantee visual integrity.
+- **Override UV Scale & Offset:** This boolean is checked by default. It instructs the SDK to forcefully inject a `Vector4(1, 1, 0, 0)` into the standard `_ST` component of your Shader Reference ID (e.g., `_BaseMap_ST`), neutralizing basic atlas distortion.
+- **Shader Property Overrides:** Many custom Shader Graphs (like those mapping custom grid atlases) use float properties instead of standard `_ST` scaling. If your material has custom atlas properties (like `Rows` or `Tile`), you **must** add them to this list to forcefully reset them to `1` when the ad injects.
+  - **How to use:** Add an element to the list. Set the **Value** to `1`.
+  - **IMPORTANT - The Property Name:** You must use the internal Shader **Reference Name**, *not* the Display Name shown in the Inspector! The Reference Name almost always begins with an underscore.
+  - **Finding the Reference Name:** In the Unity Inspector, you can either click the Gear Icon on the material -> **Select Shader**, OR open the Shader Graph. Click the property in the Blackboard, open Node Settings, and copy the **Reference** string (e.g., `_Rows`, `_GridX`, `_Tile`).
 
-> **Architectural Note:** The engine utilizes a `MaterialPropertyBlock` to execute the texture swap. This is a non-destructive operation that prevents memory leaks and ensures your base materials remain untouched in the project hierarchy.
+> **Architectural Note:** The engine utilizes a `MaterialPropertyBlock` to execute the texture swap and float overrides. This is a non-destructive operation that prevents memory leaks and ensures your base materials remain untouched in the project hierarchy.
 
 ### 3. Rendering 3D Assets (Optional)
 To spawn interactive 3D models (like a branded soda can on a table):
