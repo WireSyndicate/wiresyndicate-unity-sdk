@@ -35,11 +35,12 @@ namespace WireSyndicate.SDK
         [Tooltip("The index of the material array on the Renderer. Element 1 = Index 1.")]
         [SerializeField] private int materialIndex = 0;
 
-        [Tooltip("Forcefully overrides the material's UV Scale/Offset to 1x1, neutralizing texture atlases that could distort the ad.")]
+        [Header("Atlas & Shader Overrides")]
+        [Tooltip("Forcefully overrides the material's UV Scale/Offset to 1x1, neutralizing base texture atlases that could distort the ad.")]
         [SerializeField] private bool overrideUVScaleOffset = true;
 
-        [Tooltip("Optional overrides for custom shader float properties (e.g., setting an atlas 'Rows' property to 1 for the ad).")]
-        public System.Collections.Generic.List<ShaderFloatOverride> customFloatOverrides = new System.Collections.Generic.List<ShaderFloatOverride>();
+        [Tooltip("Override specific shader properties (e.g. _Rows, _Tile, _Glow). This is critical if your material uses a custom shader graph for texture atlases.")]
+        public System.Collections.Generic.List<ShaderFloatOverride> shaderPropertyOverrides = new System.Collections.Generic.List<ShaderFloatOverride>();
 
         // Internal references
         private MaterialPropertyBlock _propBlock;
@@ -86,9 +87,9 @@ namespace WireSyndicate.SDK
                             _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
                         }
                         
-                        if (customFloatOverrides != null)
+                        if (shaderPropertyOverrides != null)
                         {
-                            foreach (var floatOverride in customFloatOverrides)
+                            foreach (var floatOverride in shaderPropertyOverrides)
                             {
                                 if (!string.IsNullOrEmpty(floatOverride.propertyName))
                                 {
