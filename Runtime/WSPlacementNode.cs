@@ -11,7 +11,7 @@ namespace WireSyndicate.SDK
         [Tooltip("The specific renderer to analyze. If left empty, it will automatically locate one in children.")]
         [SerializeField] private Renderer targetRenderer;
 
-        private void Start()
+        protected virtual void Start()
         {
             if (targetRenderer == null)
             {
@@ -35,12 +35,12 @@ namespace WireSyndicate.SDK
             WSGazeVerificationEngine.Instance.RegisterNode(this);
         }
 
-        public Bounds GetBounds()
+        public virtual Bounds GetBounds()
         {
             return targetRenderer != null ? targetRenderer.bounds : GetComponent<Collider>().bounds;
         }
 
-        private void OnDestroy()
+        protected virtual void OnDestroy()
         {
             if (WSGazeVerificationEngine.Instance != null)
             {
