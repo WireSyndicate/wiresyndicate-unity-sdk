@@ -10,6 +10,14 @@ namespace WireSyndicate.SDK
         public string game_ready_manifest;
     }
 
+    [System.Serializable]
+    public class ShaderFloatOverride
+    {
+        [Tooltip("The exact property name in the shader (e.g. Rows, Columns, _Glossiness)")]
+        public string propertyName;
+        public float value;
+    }
+
     // THE ARCHITECT'S LESSON: 
     // Allowing flexible assignment of targetRenderer prevents structural breakage in LOD hierarchies.
     public class WSPlacementDynamic : MonoBehaviour
@@ -29,6 +37,9 @@ namespace WireSyndicate.SDK
 
         [Tooltip("Forcefully overrides the material's UV Scale/Offset to 1x1, neutralizing texture atlases that could distort the ad.")]
         [SerializeField] private bool overrideUVScaleOffset = true;
+
+        [Tooltip("Optional overrides for custom shader float properties (e.g., setting an atlas 'Rows' property to 1 for the ad).")]
+        public System.Collections.Generic.List<ShaderFloatOverride> customFloatOverrides = new System.Collections.Generic.List<ShaderFloatOverride>();
 
         // Internal references
         private MaterialPropertyBlock _propBlock;
@@ -73,6 +84,17 @@ namespace WireSyndicate.SDK
                         {
                             // Hijack the atlas math by forcing Scale 1x1 and Offset 0,0
                             _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
+                        }
+                        
+                        if (customFloatOverrides != null)
+                        {
+                            foreach (var floatOverride in customFloatOverrides)
+                            {
+                                if (!string.IsNullOrEmpty(floatOverride.propertyName))
+                                {
+                                    _propBlock.SetFloat(floatOverride.propertyName, floatOverride.value);
+                                }
+                            }
                         }
                         
                         targetRenderer.SetPropertyBlock(_propBlock, materialIndex);
