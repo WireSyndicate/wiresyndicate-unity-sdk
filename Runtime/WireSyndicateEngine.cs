@@ -49,8 +49,8 @@ namespace WireSyndicate.Core
     public class WireSyndicatePayload
     {
         public bool success;
-        public string timestamp;
-        public List<WireSyndicatePlacementData> placements;
+        public string error;
+        public WireSyndicatePlacementData data;
     }
 
     public static class WireSyndicateEngine
@@ -105,7 +105,6 @@ namespace WireSyndicate.Core
         {
             InitializeCache();
             PurgeExpiredCache();
-            StartCoroutine(FetchActiveContracts());
         }
 
         // ==========================================
@@ -194,19 +193,19 @@ namespace WireSyndicate.Core
         // API & NETWORK LOGIC
         // ==========================================
 
-        private string GetApiUrl()
+        private string GetResolveUrl(string placementId)
         {
             string baseUrl = !string.IsNullOrEmpty(WireSyndicateEngine.Config.ApiBaseUrl)
                 ? WireSyndicateEngine.Config.ApiBaseUrl.Trim().TrimEnd('/')
                 : "https://api.wiresyndicate.com";
 
-            return $"{baseUrl}/api/v1/active-contracts?org_id={WireSyndicateEngine.Config.OrgId}";
+            return $"{baseUrl}/api/v1/delivery/resolve?placement_id={placementId}";
         }
 
-        private IEnumerator FetchActiveContracts()
+        private IEnumerator ResolvePlacement(string placementId)
         {
-            string url = GetApiUrl();
-            Debug.Log($"[WireSyndicateEngine] Requesting active contracts payload from: {url}...");
+            string url = GetResolveUrl(placementId);
+            Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{placementId}' at: {url}...");
 
             using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
             {
@@ -214,26 +213,30 @@ namespace WireSyndicate.Core
 
                 if (webRequest.responseCode == 204)
                 {
-                    Debug.LogWarning("[WireSyndicateEngine] 204 No Content: No active campaigns won the waterfall. Awaiting default/fallback geometry.");
+                    Debug.LogWarning($"[WireSyndicateEngine] 204 No Content for {placementId}: No active campaigns won the waterfall. Awaiting fallback.");
+                    FulfillPendingRequests(placementId, null);
                     yield break;
                 }
 
                 if (webRequest.result != UnityWebRequest.Result.Success)
                 {
                     Debug.LogError($"[WireSyndicateEngine] API Error ({webRequest.responseCode}): {webRequest.error}");
+                    FulfillPendingRequests(placementId, null);
                     yield break;
                 }
 
-                Debug.Log("[WireSyndicateEngine] Payload received. Extracting asset URLs...");
                 string json = webRequest.downloadHandler.text;
                 WireSyndicatePayload response = JsonUtility.FromJson<WireSyndicatePayload>(json);
 
-                if (response != null && response.success && response.placements != null)
+                if (response != null && response.success && response.data != null)
                 {
-                    foreach (var placement in response.placements)
-                    {
-                        StartCoroutine(LoadOrDownloadTexture(placement));
-                    }
+                    Debug.Log($"[WireSyndicateEngine] Delivery resolved for {placementId}. Extracting asset URL...");
+                    StartCoroutine(LoadOrDownloadTexture(response.data));
+                }
+                else
+                {
+                    Debug.LogError($"[WireSyndicateEngine] Failed to parse delivery resolve response for {placementId}. Payload: {json}");
+                    FulfillPendingRequests(placementId, null);
                 }
             }
         }
@@ -311,11 +314,18 @@ namespace WireSyndicate.Core
             }
             else
             {
-                if (!_pendingRequests.ContainsKey(placementId))
+                bool isFirstRequest = !_pendingRequests.ContainsKey(placementId);
+                
+                if (isFirstRequest)
                 {
                     _pendingRequests[placementId] = new List<Action<Texture2D>>();
                 }
                 _pendingRequests[placementId].Add(onAssetLoaded);
+
+                if (isFirstRequest)
+                {
+                    StartCoroutine(ResolvePlacement(placementId));
+                }
             }
         }
 
