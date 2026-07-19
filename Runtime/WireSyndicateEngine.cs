@@ -204,9 +204,8 @@ namespace WireSyndicate.Core
 
         private IEnumerator ResolvePlacement(string placementId)
         {
-            string cleanPlacementId = placementId != null ? placementId.Trim() : "";
-            string url = GetResolveUrl(cleanPlacementId);
-            Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{cleanPlacementId}' at: {url}...");
+            string url = GetResolveUrl(placementId);
+            Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{placementId}' at: {url}...");
 
             using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
             {
@@ -309,6 +308,8 @@ namespace WireSyndicate.Core
 
         public void RequestAsset(string placementId, Action<Texture2D> onAssetLoaded)
         {
+            placementId = placementId != null ? placementId.Trim() : "";
+
             if (_activeTextures.ContainsKey(placementId))
             {
                 onAssetLoaded?.Invoke(_activeTextures[placementId]);
