@@ -53,16 +53,11 @@ namespace WireSyndicate.SDK
                 return false;
             }
 
-            string handshakeUrl = baseUrl.TrimEnd('/') + "/auth/handshake";
+            string handshakeUrl = baseUrl.TrimEnd('/') + "/network/handshake";
 
-            HandshakeRequest requestData = new HandshakeRequest { network_key = networkKey };
-            string jsonBody = JsonUtility.ToJson(requestData);
-
-            using (UnityWebRequest request = new UnityWebRequest(handshakeUrl, "POST"))
+            using (UnityWebRequest request = UnityWebRequest.Get(handshakeUrl))
             {
-                byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
-                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Authorization", $"Bearer {networkKey}");
                 request.SetRequestHeader("Content-Type", "application/json");
 
                 var operation = request.SendWebRequest();
@@ -70,7 +65,14 @@ namespace WireSyndicate.SDK
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    Debug.LogError($"[WireSyndicate] FATAL: Zero-Trust Handshake Failed. {request.error}");
+                    if (request.responseCode == 403)
+                    {
+                        Debug.LogError("[WireSyndicate] FATAL: Handshake rejected. Organization account is suspended or banned. Edge delivery halted.");
+                    }
+                    else
+                    {
+                        Debug.LogError($"[WireSyndicate] FATAL: Zero-Trust Handshake Failed. {request.error}");
+                    }
                     return false;
                 }
 
@@ -81,7 +83,7 @@ namespace WireSyndicate.SDK
                     _sessionToken = response.session_token;
                     _handshakeSecret = response.handshake_secret;
                     _isAuthenticated = true;
-                    Debug.Log("[WireSyndicate] Cryptographic Handshake Established.");
+                    Debug.Log("[WireSyndicate] Zero-Trust Handshake successful. Edge network synced.");
                     return true;
                 }
 
