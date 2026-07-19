@@ -204,8 +204,9 @@ namespace WireSyndicate.Core
 
         private IEnumerator ResolvePlacement(string placementId)
         {
-            string url = GetResolveUrl(placementId);
-            Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{placementId}' at: {url}...");
+            string cleanPlacementId = placementId != null ? placementId.Trim() : "";
+            string url = GetResolveUrl(cleanPlacementId);
+            Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{cleanPlacementId}' at: {url}...");
 
             using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
             {
