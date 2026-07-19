@@ -35,7 +35,7 @@ public class WireSyndicateInitializer : MonoBehaviour
         WireSyndicateEngine.Initialize(new WireSyndicateConfig
         {
             OrgId = networkKey,
-            Environment = WireEnvironment.Production,
+            ApiBaseUrl = apiBaseUrl,
             EnableDebugLogging = false
         });
 

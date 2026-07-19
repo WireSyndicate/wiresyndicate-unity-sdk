@@ -17,7 +17,7 @@ namespace WireSyndicate.Core
     public class WireSyndicateConfig
     {
         public string OrgId;
-        public WireEnvironment Environment = WireEnvironment.Production;
+        public string ApiBaseUrl;
         public bool EnableDebugLogging = false;
     }
 
@@ -196,11 +196,11 @@ namespace WireSyndicate.Core
 
         private string GetApiUrl()
         {
-            string baseUrl = WireSyndicateEngine.Config.Environment == WireEnvironment.Production 
-                ? "https://api.wiresyndicate.com/v1" 
-                : "http://localhost:3000/api/v1";
+            string baseUrl = !string.IsNullOrEmpty(WireSyndicateEngine.Config.ApiBaseUrl)
+                ? WireSyndicateEngine.Config.ApiBaseUrl.Trim().TrimEnd('/')
+                : "https://api.wiresyndicate.com";
 
-            return $"{baseUrl}/active-contracts?org_id={WireSyndicateEngine.Config.OrgId}";
+            return $"{baseUrl}/api/v1/active-contracts?org_id={WireSyndicateEngine.Config.OrgId}";
         }
 
         private IEnumerator FetchActiveContracts()
