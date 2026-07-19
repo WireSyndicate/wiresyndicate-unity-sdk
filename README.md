@@ -38,11 +38,13 @@ This SDK is distributed securely via the Unity Package Manager (UPM).
 Before any assets can be fetched or telemetry dispatched, you must establish the cryptographic perimeter.
 
 1. In your initial loading scene or main menu, create an empty GameObject and name it `[WireSyndicate]`.
-2. Click **Add Component** and attach the `WireSyndicateInitializer` script.
-3. In the Inspector, locate the **Network Key** field.
-4. Paste your **Organization ID** (found in your WireSyndicate Developer Portal) into the Network Key field.
+2. Click **Add Component**, search for `WireSyndicateInitializer`, and attach it. Due to its `[DisallowMultipleComponent]` architecture, you can only attach one instance per GameObject.
+3. In the Inspector, locate the **Network Key** field. Paste your **Organization ID** or **Game Network Key** into the field.
+4. Locate the **API Base URL** field. It defaults to `http://localhost:3000` for local testing. For production, update this to the live WireSyndicate API endpoint.
 
-*When the scene plays, the Initializer will automatically trigger the Ephemeral Token Handshake and lock the session.*
+> **Architecture Note:** The `WireSyndicateInitializer` is a strict `DontDestroyOnLoad` Singleton. It features built-in auto-bootstrapping, meaning it will automatically instantiate internal dependencies (like the Gaze Verification Engine). You do not need to attach them manually.
+
+*When the scene plays, the Initializer will automatically trigger the Ephemeral Token Handshake via `GET` request and lock the session. If the key is invalid or your account is suspended, the SDK will gracefully intercept the 403/404 response and halt telemetry safely.*
 
 ---
 
