@@ -1,6 +1,6 @@
 {
   "name": "com.wiresyndicate.sdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "displayName": "WireSyndicate Spatial SDK",
   "description": "Unity Edge Delivery SDK for WireSyndicate",
   "unity": "2022.3",
