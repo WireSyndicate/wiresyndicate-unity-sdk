@@ -17,6 +17,13 @@ namespace WireSyndicate.SDK
         [Tooltip("A physical anchor in the scene required for the WSGazeVerificationEngine to raycast against.")]
         public Collider primaryGazeTarget;
 
+        [Header("Atlas & Shader Overrides")]
+        [Tooltip("Forcefully overrides the material's UV Scale/Offset to 1x1, neutralizing base texture atlases that could distort the ad.")]
+        [SerializeField] private bool overrideUVScaleOffset = true;
+
+        [Tooltip("Override specific shader properties (e.g. _Rows, _Tile, _Glow). This is critical if your material uses a custom shader graph for texture atlases.")]
+        public System.Collections.Generic.List<ShaderFloatOverride> shaderPropertyOverrides = new System.Collections.Generic.List<ShaderFloatOverride>();
+
         // Keep track of the dynamically loaded texture so we can destroy it if the ad rotates, preventing VRAM leaks.
         private Texture2D _activeTexture;
 
@@ -78,6 +85,23 @@ namespace WireSyndicate.SDK
 
                     _activeTexture = texture;
                     targetMaterial.SetTexture(texturePropertyName, texture);
+                    
+                    if (overrideUVScaleOffset)
+                    {
+                        targetMaterial.SetTextureScale(texturePropertyName, new Vector2(1, 1));
+                        targetMaterial.SetTextureOffset(texturePropertyName, new Vector2(0, 0));
+                    }
+                    
+                    if (shaderPropertyOverrides != null)
+                    {
+                        foreach (var floatOverride in shaderPropertyOverrides)
+                        {
+                            if (!string.IsNullOrEmpty(floatOverride.propertyName))
+                            {
+                                targetMaterial.SetFloat(floatOverride.propertyName, floatOverride.value);
+                            }
+                        }
+                    }
                     
                     Debug.Log($"[WireSyndicate] GLOBAL Texture swapped successfully for '{targetMaterial.name}' (Placement: {placementId}).");
                 }
