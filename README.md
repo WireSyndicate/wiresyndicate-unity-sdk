@@ -79,6 +79,23 @@ Modern environments often combine multiple textures into a single Atlas Material
 
 > **Architectural Note:** The engine utilizes a `MaterialPropertyBlock` to execute the texture swap and float overrides. This is a non-destructive operation that prevents memory leaks and ensures your base materials remain untouched in the project hierarchy.
 
+### 3. Global Texture Injection: `WSSharedMaterialNode`
+When you have multiple objects in your scene (like 10 banners) that all share the *exact same* Unity Material asset, you can use this script to drastically reduce draw calls and network load. Instead of attaching a node to every single banner, you attach one global node that modifies the shared Material asset directly.
+
+**Step-by-Step Instructions:**
+1. **Create an Empty GameObject:** Name it something like `AdController_Billboard_01`.
+2. **Add Component:** Attach the `WSSharedMaterialNode` script.
+3. **Configure the Node:**
+   - **Placement ID:** Paste your unique Supabase placement ID.
+   - **Target Material:** Drag the shared `Material` asset directly from your Project window (or from the MeshRenderer of one of the banners) into this slot.
+   - **Texture Property Name:** The Shader Reference ID (e.g. `_MainTex`, `_BaseMap`, or `_Map`).
+   - **Primary Gaze Target:** The telemetry engine still needs a physical object in the scene to run line-of-sight raycasts against. Pick **just one** of your banners in the scene and drag its Collider into this slot. This will act as the physical anchor for viewability verification.
+4. **Atlas & Shader Overrides:** Just like dynamic placements, if your shared Material uses a texture atlas, the single ad image will get cropped.
+   - Check **Override UV Scale & Offset** to forcefully hijack standard `_ST` scaling to 1x1.
+   - If using custom float properties (like `_Rows` or `_Tile`), add them to the **Shader Property Overrides** list and set their values to `1` so the Material scales to show the full ad!
+
+*When you hit Play, the script will fire off a single network request, download the image, and apply it globally to that Material. All objects using that material will instantly swap to the new ad simultaneously!*
+
 ### 3. Rendering 3D Assets (Optional)
 To spawn interactive 3D models (like a branded soda can on a table):
 
