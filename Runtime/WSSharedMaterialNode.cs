@@ -27,12 +27,8 @@ namespace WireSyndicate.SDK
         // Keep track of the dynamically loaded texture so we can destroy it if the ad rotates, preventing VRAM leaks.
         private Texture2D _activeTexture;
 
-        // Caching variables to restore the global material state when the Unity Editor stops playing.
-        private Texture _originalTexture;
-        private Vector2 _originalScale;
-        private Vector2 _originalOffset;
-        private System.Collections.Generic.Dictionary<string, float> _originalFloats;
-        private bool _isOriginalCached = false;
+        // Caching variables for MaterialPropertyBlock approach (non-destructive)
+        private MaterialPropertyBlock _propBlock;
 
         protected override void Start()
         {
@@ -63,6 +59,8 @@ namespace WireSyndicate.SDK
                 Debug.Log("[WSSharedMaterialNode] Auto-bootstrapped missing WSGazeVerificationEngine.");
             }
 
+            _propBlock = new MaterialPropertyBlock();
+
             // Register this node for telemetry
             WSGazeVerificationEngine.Instance.RegisterNode(this);
 
@@ -90,48 +88,48 @@ namespace WireSyndicate.SDK
                         Destroy(_activeTexture);
                     }
 
-                    // Cache original state so we don't destructively overwrite the .mat file in the Editor
-                    if (!_isOriginalCached)
-                    {
-                        _originalTexture = targetMaterial.GetTexture(texturePropertyName);
-                        _originalScale = targetMaterial.GetTextureScale(texturePropertyName);
-                        _originalOffset = targetMaterial.GetTextureOffset(texturePropertyName);
-                        
-                        if (shaderPropertyOverrides != null)
-                        {
-                            _originalFloats = new System.Collections.Generic.Dictionary<string, float>();
-                            foreach (var floatOverride in shaderPropertyOverrides)
-                            {
-                                if (!string.IsNullOrEmpty(floatOverride.propertyName))
-                                {
-                                    _originalFloats[floatOverride.propertyName] = targetMaterial.GetFloat(floatOverride.propertyName);
-                                }
-                            }
-                        }
-                        _isOriginalCached = true;
-                    }
-
                     _activeTexture = texture;
-                    targetMaterial.SetTexture(texturePropertyName, texture);
                     
-                    if (overrideUVScaleOffset)
+                    // THE ARCHITECT'S LESSON: Non-Destructive Global Material Swapping
+                    // Modifying targetMaterial directly permanently alters the .mat asset in the Unity Editor.
+                    // Instead, we find all active renderers using this material and apply a MaterialPropertyBlock.
+                    Renderer[] allRenderers = FindObjectsOfType<Renderer>();
+                    int matchCount = 0;
+
+                    foreach (Renderer r in allRenderers)
                     {
-                        targetMaterial.SetTextureScale(texturePropertyName, new Vector2(1, 1));
-                        targetMaterial.SetTextureOffset(texturePropertyName, new Vector2(0, 0));
-                    }
-                    
-                    if (shaderPropertyOverrides != null)
-                    {
-                        foreach (var floatOverride in shaderPropertyOverrides)
+                        Material[] sharedMats = r.sharedMaterials;
+                        for (int i = 0; i < sharedMats.Length; i++)
                         {
-                            if (!string.IsNullOrEmpty(floatOverride.propertyName))
+                            if (sharedMats[i] == targetMaterial)
                             {
-                                targetMaterial.SetFloat(floatOverride.propertyName, floatOverride.value);
+                                r.GetPropertyBlock(_propBlock, i);
+                                _propBlock.SetTexture(texturePropertyName, texture);
+                                
+                                if (overrideUVScaleOffset)
+                                {
+                                    // Scale 1x1, Offset 0x0
+                                    _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
+                                }
+                                
+                                if (shaderPropertyOverrides != null)
+                                {
+                                    foreach (var floatOverride in shaderPropertyOverrides)
+                                    {
+                                        if (!string.IsNullOrEmpty(floatOverride.propertyName))
+                                        {
+                                            _propBlock.SetFloat(floatOverride.propertyName, floatOverride.value);
+                                        }
+                                    }
+                                }
+                                
+                                r.SetPropertyBlock(_propBlock, i);
+                                matchCount++;
                             }
                         }
                     }
                     
-                    Debug.Log($"[WireSyndicate] GLOBAL Texture swapped successfully for '{targetMaterial.name}' (Placement: {placementId}).");
+                    Debug.Log($"[WireSyndicate] GLOBAL Texture swapped safely on {matchCount} renderer(s) for '{targetMaterial.name}' (Placement: {placementId}).");
                 }
                 catch (System.Exception ex)
                 {
@@ -149,8 +147,6 @@ namespace WireSyndicate.SDK
             // First call base to unregister from the gaze engine
             base.OnDestroy();
 
-            RestoreOriginalMaterial();
-
             // Then clean up our texture to prevent VRAM leaks on scene unload
             if (_activeTexture != null)
             {
@@ -160,28 +156,7 @@ namespace WireSyndicate.SDK
 
         private void OnApplicationQuit()
         {
-            RestoreOriginalMaterial();
-        }
-
-        private void RestoreOriginalMaterial()
-        {
-            if (_isOriginalCached && targetMaterial != null)
-            {
-                targetMaterial.SetTexture(texturePropertyName, _originalTexture);
-                targetMaterial.SetTextureScale(texturePropertyName, _originalScale);
-                targetMaterial.SetTextureOffset(texturePropertyName, _originalOffset);
-                
-                if (_originalFloats != null)
-                {
-                    foreach (var kvp in _originalFloats)
-                    {
-                        targetMaterial.SetFloat(kvp.Key, kvp.Value);
-                    }
-                }
-                
-                _isOriginalCached = false;
-                Debug.Log($"[WSSharedMaterialNode] Restored original material state for '{targetMaterial.name}'.");
-            }
+            // No cleanup necessary since MaterialPropertyBlocks are intrinsically non-destructive.
         }
     }
 }

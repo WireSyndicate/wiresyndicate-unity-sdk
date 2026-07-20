@@ -20,14 +20,12 @@ namespace WireSyndicate.SDK
 
     // THE ARCHITECT'S LESSON: 
     // Allowing flexible assignment of targetRenderer prevents structural breakage in LOD hierarchies.
-    public class WSPlacementDynamic : MonoBehaviour
+    public class WSPlacementDynamic : WSPlacementNode
     {
-        [Header("Placement Configuration")]
-        [Tooltip("The unique placement_id from the Supabase dashboard.")]
-        public string placementId;
+        [Header("Placement Configuration (Dynamic)")]
 
-        [Tooltip("The specific renderer to apply textures to. If left empty, it will automatically locate one in children.")]
-        [SerializeField] private Renderer targetRenderer;
+        [Tooltip("The specific renderers to apply textures to (e.g. all LOD levels). If left empty, it will automatically locate all renderers in children.")]
+        [SerializeField] private Renderer[] targetRenderers;
 
         [Tooltip("Shader property name for the texture (e.g., _MainTex for Standard, _BaseColorMap for URP/HDRP).")]
         public string texturePropertyName = "_BaseColorMap";
@@ -47,15 +45,18 @@ namespace WireSyndicate.SDK
 
         private void Awake()
         {
-            if (targetRenderer == null)
+            if (targetRenderers == null || targetRenderers.Length == 0)
             {
-                targetRenderer = GetComponentInChildren<Renderer>();
+                targetRenderers = GetComponentsInChildren<Renderer>();
             }
             _propBlock = new MaterialPropertyBlock();
         }
 
-        private void Start()
+        protected override void Start()
         {
+            // Call base to register with Gaze Verification Engine
+            base.Start();
+
             if (string.IsNullOrEmpty(placementId))
             {
                 Debug.LogWarning($"[WireSyndicate] The placement object '{gameObject.name}' is missing a Placement ID!");
@@ -64,6 +65,35 @@ namespace WireSyndicate.SDK
 
             // Route asset fetching directly through the core engine to leverage disk caching and the unified connection.
             WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyTextureSafely);
+        }
+
+        public override Bounds GetBounds()
+        {
+            if (targetRenderers != null && targetRenderers.Length > 0)
+            {
+                // Encapsulate all LOD renderers to get a unified bounding box
+                bool initialized = false;
+                Bounds combinedBounds = new Bounds();
+                
+                foreach (var r in targetRenderers)
+                {
+                    if (r != null)
+                    {
+                        if (!initialized)
+                        {
+                            combinedBounds = r.bounds;
+                            initialized = true;
+                        }
+                        else
+                        {
+                            combinedBounds.Encapsulate(r.bounds);
+                        }
+                    }
+                }
+                
+                if (initialized) return combinedBounds;
+            }
+            return base.GetBounds();
         }
 
         private void ApplyTextureSafely(Texture2D texture)
@@ -76,35 +106,40 @@ namespace WireSyndicate.SDK
                     // THE ARCHITECT'S LESSON: Non-Destructive Texture Swapping
                     // Using MaterialPropertyBlock prevents the creation of new material instances in memory,
                     // avoiding memory leaks and keeping the base material untouched.
-                    if (targetRenderer != null)
+                    if (targetRenderers != null && targetRenderers.Length > 0)
                     {
-                        if (materialIndex < 0 || materialIndex >= targetRenderer.sharedMaterials.Length)
+                        foreach (var targetRenderer in targetRenderers)
                         {
-                            Debug.LogError($"[WSPlacementDynamic] FATAL: Failed to apply texture on '{gameObject.name}'. The Material Index ({materialIndex}) is out of bounds! The Renderer only has {targetRenderer.sharedMaterials.Length} material(s). Please fix the Material Index in the Inspector.");
-                            return;
-                        }
+                            if (targetRenderer == null) continue;
 
-                        targetRenderer.GetPropertyBlock(_propBlock, materialIndex);
-                        _propBlock.SetTexture(texturePropertyName, texture);
-                        
-                        if (overrideUVScaleOffset)
-                        {
-                            // Hijack the atlas math by forcing Scale 1x1 and Offset 0,0
-                            _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
-                        }
-                        
-                        if (shaderPropertyOverrides != null)
-                        {
-                            foreach (var floatOverride in shaderPropertyOverrides)
+                            if (materialIndex < 0 || materialIndex >= targetRenderer.sharedMaterials.Length)
                             {
-                                if (!string.IsNullOrEmpty(floatOverride.propertyName))
+                                Debug.LogError($"[WSPlacementDynamic] Skipped renderer '{targetRenderer.name}' on '{gameObject.name}': Material Index ({materialIndex}) is out of bounds (only {targetRenderer.sharedMaterials.Length} materials).");
+                                continue;
+                            }
+
+                            targetRenderer.GetPropertyBlock(_propBlock, materialIndex);
+                            _propBlock.SetTexture(texturePropertyName, texture);
+                            
+                            if (overrideUVScaleOffset)
+                            {
+                                // Hijack the atlas math by forcing Scale 1x1 and Offset 0,0
+                                _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
+                            }
+                            
+                            if (shaderPropertyOverrides != null)
+                            {
+                                foreach (var floatOverride in shaderPropertyOverrides)
                                 {
-                                    _propBlock.SetFloat(floatOverride.propertyName, floatOverride.value);
+                                    if (!string.IsNullOrEmpty(floatOverride.propertyName))
+                                    {
+                                        _propBlock.SetFloat(floatOverride.propertyName, floatOverride.value);
+                                    }
                                 }
                             }
+                            
+                            targetRenderer.SetPropertyBlock(_propBlock, materialIndex);
                         }
-                        
-                        targetRenderer.SetPropertyBlock(_propBlock, materialIndex);
                     }
                     
                     Debug.Log($"[WireSyndicate] Texture swapped successfully for '{gameObject.name}' (Placement: {placementId}).");
