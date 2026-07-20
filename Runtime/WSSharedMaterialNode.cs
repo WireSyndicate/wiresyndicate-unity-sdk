@@ -27,6 +27,13 @@ namespace WireSyndicate.SDK
         // Keep track of the dynamically loaded texture so we can destroy it if the ad rotates, preventing VRAM leaks.
         private Texture2D _activeTexture;
 
+        // Caching variables to restore the global material state when the Unity Editor stops playing.
+        private Texture _originalTexture;
+        private Vector2 _originalScale;
+        private Vector2 _originalOffset;
+        private System.Collections.Generic.Dictionary<string, float> _originalFloats;
+        private bool _isOriginalCached = false;
+
         protected override void Start()
         {
             // Instead of doing the targetRenderer logic from the base class, we just validate our own.
@@ -83,6 +90,27 @@ namespace WireSyndicate.SDK
                         Destroy(_activeTexture);
                     }
 
+                    // Cache original state so we don't destructively overwrite the .mat file in the Editor
+                    if (!_isOriginalCached)
+                    {
+                        _originalTexture = targetMaterial.GetTexture(texturePropertyName);
+                        _originalScale = targetMaterial.GetTextureScale(texturePropertyName);
+                        _originalOffset = targetMaterial.GetTextureOffset(texturePropertyName);
+                        
+                        if (shaderPropertyOverrides != null)
+                        {
+                            _originalFloats = new System.Collections.Generic.Dictionary<string, float>();
+                            foreach (var floatOverride in shaderPropertyOverrides)
+                            {
+                                if (!string.IsNullOrEmpty(floatOverride.propertyName))
+                                {
+                                    _originalFloats[floatOverride.propertyName] = targetMaterial.GetFloat(floatOverride.propertyName);
+                                }
+                            }
+                        }
+                        _isOriginalCached = true;
+                    }
+
                     _activeTexture = texture;
                     targetMaterial.SetTexture(texturePropertyName, texture);
                     
@@ -121,10 +149,38 @@ namespace WireSyndicate.SDK
             // First call base to unregister from the gaze engine
             base.OnDestroy();
 
+            RestoreOriginalMaterial();
+
             // Then clean up our texture to prevent VRAM leaks on scene unload
             if (_activeTexture != null)
             {
                 Destroy(_activeTexture);
+            }
+        }
+
+        private void OnApplicationQuit()
+        {
+            RestoreOriginalMaterial();
+        }
+
+        private void RestoreOriginalMaterial()
+        {
+            if (_isOriginalCached && targetMaterial != null)
+            {
+                targetMaterial.SetTexture(texturePropertyName, _originalTexture);
+                targetMaterial.SetTextureScale(texturePropertyName, _originalScale);
+                targetMaterial.SetTextureOffset(texturePropertyName, _originalOffset);
+                
+                if (_originalFloats != null)
+                {
+                    foreach (var kvp in _originalFloats)
+                    {
+                        targetMaterial.SetFloat(kvp.Key, kvp.Value);
+                    }
+                }
+                
+                _isOriginalCached = false;
+                Debug.Log($"[WSSharedMaterialNode] Restored original material state for '{targetMaterial.name}'.");
             }
         }
     }
