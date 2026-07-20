@@ -2,7 +2,6 @@ using UnityEngine;
 
 namespace WireSyndicate.SDK
 {
-    [RequireComponent(typeof(Collider))]
     public class WSPlacementNode : MonoBehaviour
     {
         [Tooltip("The UUID of the placement registered in the WireSyndicate portal.")]
