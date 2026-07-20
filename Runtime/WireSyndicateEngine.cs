@@ -17,6 +17,7 @@ namespace WireSyndicate.Core
     public class WireSyndicateConfig
     {
         public string OrgId;
+        public string GameId;
         public string ApiBaseUrl;
         public bool EnableDebugLogging = false;
     }
@@ -71,6 +72,14 @@ namespace WireSyndicate.Core
 
             // Execute the Ephemeral Token Handshake immediately
             _ = WireSyndicate.SDK.WSTelemetryDispatcher.AuthenticateAsync(config.OrgId);
+
+            if (WireSyndicate.SDK.WSTelemetryDispatcher.Instance == null)
+            {
+                GameObject telemetryObj = new GameObject("[WireSyndicate_Telemetry]");
+                UnityEngine.Object.DontDestroyOnLoad(telemetryObj);
+                var dispatcher = telemetryObj.AddComponent<WireSyndicate.SDK.WSTelemetryDispatcher>();
+                dispatcher.gameId = config.GameId;
+            }
 
             GameObject coreObj = new GameObject("[WireSyndicate_InternalEngine]");
             UnityEngine.Object.DontDestroyOnLoad(coreObj);
