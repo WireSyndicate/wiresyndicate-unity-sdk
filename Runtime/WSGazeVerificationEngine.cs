@@ -4,7 +4,6 @@ using UnityEngine;
 
 namespace WireSyndicate.SDK
 {
-    [RequireComponent(typeof(Camera))]
     public class WSGazeVerificationEngine : MonoBehaviour
     {
         public static WSGazeVerificationEngine Instance { get; private set; }
@@ -41,7 +40,13 @@ namespace WireSyndicate.SDK
             if (Instance == null)
             {
                 Instance = this;
-                mainCamera = GetComponent<Camera>();
+                mainCamera = Camera.main;
+                
+                if (mainCamera == null)
+                {
+                    Debug.LogWarning("[WSGazeVerificationEngine] No Camera tagged 'MainCamera' found. Frustum tracking will be paused until one is assigned.");
+                }
+
                 DontDestroyOnLoad(gameObject);
             }
             else
