@@ -152,6 +152,12 @@ namespace WireSyndicate.SDK
             else
             {
                 Debug.LogWarning($"[WireSyndicate] Failed to retrieve asset for placement {placementId}. Fallback visuals retained.");
+                // Prevent synthetic fraud: Unregister this node from the Gaze Engine since the ad didn't load
+                if (WSGazeVerificationEngine.Instance != null)
+                {
+                    WSGazeVerificationEngine.Instance.UnregisterNode(this);
+                    Debug.Log($"[WireSyndicate] Unregistered placement {placementId} from Telemetry to prevent synthetic GVI fraud.");
+                }
             }
         }
     }
