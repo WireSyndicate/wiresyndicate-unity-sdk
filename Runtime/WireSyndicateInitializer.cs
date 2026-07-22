@@ -14,7 +14,7 @@ public class WireSyndicateInitializer : MonoBehaviour
 
     [Header("Network Configuration")]
     [Tooltip("Target URL. E.g., http://localhost:3000 or https://api.wiresyndicate.com")]
-    public string apiBaseUrl = "http://localhost:3000";
+    public string apiBaseUrl = "https://api.wiresyndicate.com";
 
     private void Awake()
     {

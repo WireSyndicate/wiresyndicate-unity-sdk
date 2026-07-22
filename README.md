@@ -40,7 +40,7 @@ Before any assets can be fetched or telemetry dispatched, you must establish the
 1. In your initial loading scene or main menu, create an empty GameObject and name it `[WireSyndicate]`.
 2. Click **Add Component**, search for `WireSyndicateInitializer`, and attach it. Due to its `[DisallowMultipleComponent]` architecture, you can only attach one instance per GameObject.
 3. In the Inspector, locate the **Network Key** field. Paste your **Organization ID** or **Game Network Key** into the field.
-4. Locate the **API Base URL** field. It defaults to `http://localhost:3000` for local testing. For production, update this to the live WireSyndicate API endpoint.
+4. Locate the **API Base URL** field. It defaults to `https://api.wiresyndicate.com` for production. If you are doing local testing against your own environment, you can change this to `http://localhost:3000`.
 
 > **Architecture Note:** The `WireSyndicateInitializer` is a strict `DontDestroyOnLoad` Singleton. It features built-in auto-bootstrapping, meaning it will automatically instantiate internal dependencies (like the Gaze Verification Engine). You do not need to attach them manually.
 
