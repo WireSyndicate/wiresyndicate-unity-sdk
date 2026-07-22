@@ -13,7 +13,7 @@ public class WireSyndicateInitializer : MonoBehaviour
     public string gameId;
 
     [Header("Network Configuration")]
-    [Tooltip("Target URL. E.g., http://localhost:3000 or https://api.wiresyndicate.com")]
+    [Tooltip("Target URL. E.g., https://api.wiresyndicate.com")]
     public string apiBaseUrl = "https://api.wiresyndicate.com";
 
     private void Awake()
