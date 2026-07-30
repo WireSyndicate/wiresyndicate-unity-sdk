@@ -17,6 +17,9 @@ namespace WireSyndicate.SDK
         [Tooltip("Validation matrix execution frequency (in seconds). 0.1 = 10Hz.")]
         public float tickRate = 0.1f;
         
+        [Tooltip("Toggle on to log the exact reason why a placement fails the verification matrix (e.g. angle, distance, occlusion).")]
+        public bool enableDebugLogs = false;
+
         [Tooltip("Layers that can block line-of-sight to the advertisement.")]
         public LayerMask occlusionMask;
 
@@ -156,6 +159,7 @@ namespace WireSyndicate.SDK
             Vector3 centerViewportPos = mainCamera.WorldToViewportPoint(nodeCenter);
             if (centerViewportPos.z <= 0)
             {
+                if (enableDebugLogs) Debug.Log($"[WSGazeVerificationEngine] {node.placementId} failed: Frustum Culling (Behind Camera)");
                 return false;
             }
 
@@ -166,6 +170,7 @@ namespace WireSyndicate.SDK
 
             if (angle > MAX_VIEWING_ANGLE)
             {
+                if (enableDebugLogs) Debug.Log($"[WSGazeVerificationEngine] {node.placementId} failed: Viewing Angle ({angle}° > {MAX_VIEWING_ANGLE}°)");
                 return false;
             }
 
@@ -173,6 +178,7 @@ namespace WireSyndicate.SDK
             float facingDot = Vector3.Dot(node.GetForward(), -dirToNode);
             if (facingDot < 0) 
             {
+                if (enableDebugLogs) Debug.Log($"[WSGazeVerificationEngine] {node.placementId} failed: Backface Culling");
                 return false;
             }
 
@@ -180,6 +186,7 @@ namespace WireSyndicate.SDK
             screenCoverage = CalculateViewportCoverage(bounds);
             if (screenCoverage < MIN_VIEWPORT_COVERAGE)
             {
+                if (enableDebugLogs) Debug.Log($"[WSGazeVerificationEngine] {node.placementId} failed: Screen Coverage ({(screenCoverage * 100f):F2}% < {(MIN_VIEWPORT_COVERAGE * 100f):F2}%)");
                 return false;
             }
 
@@ -199,6 +206,7 @@ namespace WireSyndicate.SDK
                     }
                     else
                     {
+                        if (enableDebugLogs) Debug.Log($"[WSGazeVerificationEngine] {node.placementId} failed: Occluded by {hitInfo.collider.gameObject.name}");
                         return false;
                     }
                 }
