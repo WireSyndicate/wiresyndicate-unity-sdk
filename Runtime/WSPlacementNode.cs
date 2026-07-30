@@ -39,6 +39,11 @@ namespace WireSyndicate.SDK
             return targetRenderer != null ? targetRenderer.bounds : GetComponent<Collider>().bounds;
         }
 
+        public virtual Vector3 GetForward()
+        {
+            return targetRenderer != null ? targetRenderer.transform.forward : transform.forward;
+        }
+
         protected virtual void OnDestroy()
         {
             if (WSGazeVerificationEngine.Instance != null)

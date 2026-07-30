@@ -75,6 +75,11 @@ namespace WireSyndicate.SDK
             return primaryGazeTarget != null ? primaryGazeTarget.bounds : base.GetBounds();
         }
 
+        public override Vector3 GetForward()
+        {
+            return primaryGazeTarget != null ? primaryGazeTarget.transform.forward : base.GetForward();
+        }
+
         private void ApplyTextureSafely(Texture2D texture)
         {
             if (texture != null)

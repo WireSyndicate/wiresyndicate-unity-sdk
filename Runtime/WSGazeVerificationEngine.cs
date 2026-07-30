@@ -170,7 +170,7 @@ namespace WireSyndicate.SDK
             }
 
             // Backface culling
-            float facingDot = Vector3.Dot(node.transform.forward, -dirToNode);
+            float facingDot = Vector3.Dot(node.GetForward(), -dirToNode);
             if (facingDot < 0) 
             {
                 return false;
@@ -192,7 +192,15 @@ namespace WireSyndicate.SDK
                 
                 if (hitNode != node)
                 {
-                    return false;
+                    // Fallback for WSSharedMaterialNode which uses an external collider as a gaze target
+                    if (node is WSSharedMaterialNode sharedNode && sharedNode.primaryGazeTarget == hitInfo.collider)
+                    {
+                        // It hit the correct target collider for the shared node
+                    }
+                    else
+                    {
+                        return false;
+                    }
                 }
             }
 

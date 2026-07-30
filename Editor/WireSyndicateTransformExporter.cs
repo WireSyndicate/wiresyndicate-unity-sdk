@@ -45,6 +45,13 @@ namespace WireSyndicate.Editor
                 return;
             }
 
+            if (matchingRenderers.Count > 150)
+            {
+                Debug.LogWarning("Target material is assigned to more than 150 objects. Multi-node limit exceeded.");
+                EditorUtility.DisplayDialog("Error", "Target material is assigned to more than 150 objects. Multi-node limit exceeded.", "OK");
+                return;
+            }
+
             var exportData = new List<TransformData>();
 
             foreach (var renderer in matchingRenderers)
@@ -99,9 +106,9 @@ namespace WireSyndicate.Editor
 
             public Vector3Data(Vector3 v)
             {
-                x = v.x;
-                y = v.y;
-                z = v.z;
+                x = (float)System.Math.Round(v.x, 4);
+                y = (float)System.Math.Round(v.y, 4);
+                z = (float)System.Math.Round(v.z, 4);
             }
         }
     }
