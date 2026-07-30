@@ -204,6 +204,10 @@ namespace WireSyndicate.SDK
                     {
                         // It hit the correct target collider for the shared node
                     }
+                    else if (node is WSGhostNode ghostNode && ghostNode.targetCollider == hitInfo.collider)
+                    {
+                        // It hit the correct target collider for the ghost node
+                    }
                     else
                     {
                         if (enableDebugLogs) Debug.Log($"[WSGazeVerificationEngine] {node.placementId} failed: Occluded by {hitInfo.collider.gameObject.name}");

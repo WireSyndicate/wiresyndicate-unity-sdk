@@ -17,6 +17,9 @@ namespace WireSyndicate.SDK
         [Tooltip("A physical anchor in the scene required for the WSGazeVerificationEngine to raycast against.")]
         public Collider primaryGazeTarget;
 
+        [Tooltip("Additional colliders in the scene that share this material. The system will automatically spawn ghost nodes on these to track gaze verification for all of them without extra setup.")]
+        public System.Collections.Generic.List<Collider> additionalGazeTargets = new System.Collections.Generic.List<Collider>();
+
         [Header("Atlas & Shader Overrides")]
         [Tooltip("Forcefully overrides the material's UV Scale/Offset to 1x1, neutralizing base texture atlases that could distort the ad.")]
         [SerializeField] private bool overrideUVScaleOffset = true;
@@ -63,6 +66,25 @@ namespace WireSyndicate.SDK
 
             // Register this node for telemetry
             WSGazeVerificationEngine.Instance.RegisterNode(this);
+
+            // Spawn Ghost Nodes for additional targets to track gaze without requiring extra setup
+            if (additionalGazeTargets != null && additionalGazeTargets.Count > 0)
+            {
+                foreach (Collider target in additionalGazeTargets)
+                {
+                    if (target != null && target != primaryGazeTarget)
+                    {
+                        // Ensure we don't double up if they already have one
+                        if (target.GetComponent<WSGhostNode>() == null)
+                        {
+                            WSGhostNode ghost = target.gameObject.AddComponent<WSGhostNode>();
+                            ghost.placementId = this.placementId;
+                            ghost.targetCollider = target;
+                        }
+                    }
+                }
+                Debug.Log($"[WSSharedMaterialNode] Auto-spawned {additionalGazeTargets.Count} ghost nodes for telemetry tracking.");
+            }
 
             // Fetch the asset via the unified engine connection (preserves caching and batching)
             WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyTextureSafely);
@@ -162,6 +184,35 @@ namespace WireSyndicate.SDK
         private void OnApplicationQuit()
         {
             // No cleanup necessary since MaterialPropertyBlocks are intrinsically non-destructive.
+        }
+    }
+
+    /// <summary>
+    /// A lightweight tracking node automatically spawned by WSSharedMaterialNode 
+    /// for additional gaze targets. It registers with the Gaze Verification Engine 
+    /// but does not perform any texture downloads or material modifications.
+    /// </summary>
+    public class WSGhostNode : WSPlacementNode
+    {
+        public Collider targetCollider;
+
+        protected override void Start()
+        {
+            if (string.IsNullOrEmpty(placementId)) return;
+            if (WSGazeVerificationEngine.Instance != null)
+            {
+                WSGazeVerificationEngine.Instance.RegisterNode(this);
+            }
+        }
+
+        public override Bounds GetBounds()
+        {
+            return targetCollider != null ? targetCollider.bounds : base.GetBounds();
+        }
+
+        public override Vector3 GetForward()
+        {
+            return targetCollider != null ? targetCollider.transform.forward : base.GetForward();
         }
     }
 }
