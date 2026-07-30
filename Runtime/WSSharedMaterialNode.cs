@@ -185,6 +185,60 @@ namespace WireSyndicate.SDK
         {
             // No cleanup necessary since MaterialPropertyBlocks are intrinsically non-destructive.
         }
+
+#if UNITY_EDITOR
+        [ContextMenu("Auto-Populate Gaze Targets")]
+        public void AutoPopulateGazeTargets()
+        {
+            if (targetMaterial == null)
+            {
+                Debug.LogWarning("[WSSharedMaterialNode] Please assign a Global Material Configuration > Target Material first.");
+                return;
+            }
+
+            // Keep the primary target, but clear the additional ones
+            additionalGazeTargets.Clear();
+            
+            Renderer[] allRenderers = FindObjectsOfType<Renderer>();
+            int addedCount = 0;
+
+            foreach (Renderer r in allRenderers)
+            {
+                bool usesMaterial = false;
+                if (r.sharedMaterials != null)
+                {
+                    foreach (Material mat in r.sharedMaterials)
+                    {
+                        if (mat == targetMaterial)
+                        {
+                            usesMaterial = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (usesMaterial)
+                {
+                    Collider c = r.GetComponent<Collider>();
+                    if (c != null)
+                    {
+                        if (primaryGazeTarget == null)
+                        {
+                            primaryGazeTarget = c;
+                        }
+                        else if (c != primaryGazeTarget && !additionalGazeTargets.Contains(c))
+                        {
+                            additionalGazeTargets.Add(c);
+                            addedCount++;
+                        }
+                    }
+                }
+            }
+
+            UnityEditor.EditorUtility.SetDirty(this);
+            Debug.Log($"[WSSharedMaterialNode] Auto-populated {addedCount} additional gaze targets based on the '{targetMaterial.name}' material.");
+        }
+#endif
     }
 
     /// <summary>
