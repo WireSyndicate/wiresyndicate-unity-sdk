@@ -219,7 +219,11 @@ namespace WireSyndicate.SDK
 
                 if (usesMaterial)
                 {
+                    // The collider might be on the same object, or nested on a child/parent
                     Collider c = r.GetComponent<Collider>();
+                    if (c == null) c = r.GetComponentInChildren<Collider>();
+                    if (c == null) c = r.GetComponentInParent<Collider>();
+
                     if (c != null)
                     {
                         if (primaryGazeTarget == null)
