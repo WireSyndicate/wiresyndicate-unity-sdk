@@ -231,6 +231,13 @@ namespace WireSyndicate.SDK
                         c = r.transform.parent.GetComponentInChildren<Collider>(true);
                     }
 
+                    // If no collider exists in the entire hierarchy for this renderer, add one automatically!
+                    if (c == null)
+                    {
+                        c = r.gameObject.AddComponent<BoxCollider>();
+                        Debug.Log($"[WSSharedMaterialNode] Automatically added missing BoxCollider to '{r.gameObject.name}'.");
+                    }
+
                     if (c != null)
                     {
                         if (primaryGazeTarget == null)
