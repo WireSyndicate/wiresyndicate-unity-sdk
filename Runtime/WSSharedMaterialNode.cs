@@ -119,8 +119,8 @@ namespace WireSyndicate.SDK
                     
                     // THE ARCHITECT'S LESSON: Non-Destructive Global Material Swapping
                     // Modifying targetMaterial directly permanently alters the .mat asset in the Unity Editor.
-                    // Instead, we find all active renderers using this material and apply a MaterialPropertyBlock.
-                    Renderer[] allRenderers = FindObjectsOfType<Renderer>();
+                    // Instead, we find all active and inactive renderers using this material and apply a MaterialPropertyBlock.
+                    Renderer[] allRenderers = FindObjectsOfType<Renderer>(true);
                     int matchCount = 0;
 
                     foreach (Renderer r in allRenderers)
@@ -199,7 +199,8 @@ namespace WireSyndicate.SDK
             // Keep the primary target, but clear the additional ones
             additionalGazeTargets.Clear();
             
-            Renderer[] allRenderers = FindObjectsOfType<Renderer>();
+            // Pass 'true' to include inactive GameObjects in the scene
+            Renderer[] allRenderers = FindObjectsOfType<Renderer>(true);
             int addedCount = 0;
 
             foreach (Renderer r in allRenderers)
@@ -219,10 +220,16 @@ namespace WireSyndicate.SDK
 
                 if (usesMaterial)
                 {
-                    // The collider might be on the same object, or nested on a child/parent
+                    // The collider might be on the same object, nested on a child/parent, or a sibling
                     Collider c = r.GetComponent<Collider>();
-                    if (c == null) c = r.GetComponentInChildren<Collider>();
+                    if (c == null) c = r.GetComponentInChildren<Collider>(true);
                     if (c == null) c = r.GetComponentInParent<Collider>();
+                    
+                    // If we still haven't found it, search siblings (children of the parent)
+                    if (c == null && r.transform.parent != null)
+                    {
+                        c = r.transform.parent.GetComponentInChildren<Collider>(true);
+                    }
 
                     if (c != null)
                     {
