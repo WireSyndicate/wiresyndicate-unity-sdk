@@ -42,6 +42,7 @@ namespace WireSyndicate.SDK
 
         // Internal references
         private MaterialPropertyBlock _propBlock;
+        private Texture2D _activeTexture;
 
         private void Awake()
         {
@@ -106,6 +107,13 @@ namespace WireSyndicate.SDK
                     // THE ARCHITECT'S LESSON: Non-Destructive Texture Swapping
                     // Using MaterialPropertyBlock prevents the creation of new material instances in memory,
                     // avoiding memory leaks and keeping the base material untouched.
+                    
+                    if (_activeTexture != null && _activeTexture != texture)
+                    {
+                        Destroy(_activeTexture);
+                    }
+                    _activeTexture = texture;
+
                     if (targetRenderers != null && targetRenderers.Length > 0)
                     {
                         foreach (var targetRenderer in targetRenderers)
@@ -158,6 +166,17 @@ namespace WireSyndicate.SDK
                     WSGazeVerificationEngine.Instance.UnregisterNode(this);
                     Debug.Log($"[WireSyndicate] Unregistered placement {placementId} from Telemetry to prevent synthetic GVI fraud.");
                 }
+            }
+        }
+
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+            
+            // Clean up our texture to prevent VRAM leaks on scene unload
+            if (_activeTexture != null)
+            {
+                Destroy(_activeTexture);
             }
         }
     }
