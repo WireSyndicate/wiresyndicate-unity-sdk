@@ -21,7 +21,7 @@ namespace WireSyndicate.SDK
         public bool enableDebugLogs = false;
 
         [Tooltip("Layers that can block line-of-sight to the advertisement.")]
-        public LayerMask occlusionMask;
+        public LayerMask occlusionLayerMask;
 
         private Camera mainCamera;
         private List<WSPlacementNode> activeNodes = new List<WSPlacementNode>();
@@ -31,7 +31,10 @@ namespace WireSyndicate.SDK
             public float currentDwellTime;
             public float peakScreenCoverage;
             public bool hasSurpassedThreshold;
-        public bool isCurrentlyVisible;
+            public bool isCurrentlyVisible;
+            public float lastDistance;
+            public float lastAngle;
+            public float lastOcclusionPercentage;
         }
 
         private Dictionary<WSPlacementNode, GazeState> nodeStates = new Dictionary<WSPlacementNode, GazeState>();
@@ -115,8 +118,8 @@ namespace WireSyndicate.SDK
                 if (node == null) continue;
 
                 GazeState state = nodeStates[node];
-                float currentCoverage;
-                bool isVerified = EvaluateNode(node, cameraPos, cameraForward, out currentCoverage);
+                float currentCoverage, currentDistance, currentAngle, currentOcclusion;
+                bool isVerified = EvaluateNode(node, cameraPos, cameraForward, out currentCoverage, out currentDistance, out currentAngle, out currentOcclusion);
 
                 if (isVerified != state.isCurrentlyVisible) {
                     state.isCurrentlyVisible = isVerified;
@@ -129,6 +132,9 @@ namespace WireSyndicate.SDK
                     if (currentCoverage > state.peakScreenCoverage)
                     {
                         state.peakScreenCoverage = currentCoverage;
+                        state.lastDistance = currentDistance;
+                        state.lastAngle = currentAngle;
+                        state.lastOcclusionPercentage = currentOcclusion;
                     }
 
                     if (state.currentDwellTime >= REQUIRED_DWELL_TIME)
@@ -153,13 +159,17 @@ namespace WireSyndicate.SDK
             }
         }
 
-        private bool EvaluateNode(WSPlacementNode node, Vector3 cameraPos, Vector3 cameraForward, out float screenCoverage)
+        private bool EvaluateNode(WSPlacementNode node, Vector3 cameraPos, Vector3 cameraForward, out float screenCoverage, out float distanceToNode, out float angle, out float occlusionPercentage)
         {
             screenCoverage = 0f;
+            distanceToNode = 0f;
+            angle = 0f;
+            occlusionPercentage = 1f;
+
             Bounds bounds = node.GetBounds();
             Vector3 nodeCenter = bounds.center;
             Vector3 dirToNode = nodeCenter - cameraPos;
-            float distanceToNode = dirToNode.magnitude;
+            distanceToNode = dirToNode.magnitude;
 
             // 1. Frustum Culling (Is the center behind the camera?)
             Vector3 centerViewportPos = mainCamera.WorldToViewportPoint(nodeCenter);
@@ -172,7 +182,7 @@ namespace WireSyndicate.SDK
             // 2. Angle of Incidence (Dot Product Gaze Match)
             dirToNode.Normalize();
             float dotProduct = Vector3.Dot(cameraForward, dirToNode);
-            float angle = Mathf.Acos(Mathf.Clamp(dotProduct, -1f, 1f)) * Mathf.Rad2Deg;
+            angle = Mathf.Acos(Mathf.Clamp(dotProduct, -1f, 1f)) * Mathf.Rad2Deg;
 
             if (angle > MAX_VIEWING_ANGLE)
             {
@@ -196,30 +206,57 @@ namespace WireSyndicate.SDK
                 return false;
             }
 
-            // 4. Occlusion Check (Physics.Raycast single-hit)
-            if (Physics.Raycast(cameraPos, dirToNode, out RaycastHit hitInfo, distanceToNode - 0.01f, occlusionMask))
+            // 4. Occlusion Check (5-Point Sparse Raycast Matrix)
+            int occlusionHits = 0;
+            Vector3 extents = bounds.extents;
+            
+            // Generate 5 points on the front-facing plane of the bounds
+            // Using a simple cross shape: Center, Top, Bottom, Left, Right relative to world axes
+            // (A more advanced version would use camera-aligned axes, but this is fast and standard)
+            Vector3[] rayTargets = new Vector3[5] {
+                nodeCenter,
+                nodeCenter + new Vector3(0, extents.y, 0),
+                nodeCenter + new Vector3(0, -extents.y, 0),
+                nodeCenter + new Vector3(extents.x, 0, 0),
+                nodeCenter + new Vector3(-extents.x, 0, 0)
+            };
+
+            for (int i = 0; i < 5; i++)
             {
-                // If we hit anything on the occlusion mask before reaching the target, it is blocked.
-                // We check if the hit collider is part of the same hierarchy as the target node.
-                WSPlacementNode hitNode = hitInfo.collider.GetComponentInParent<WSPlacementNode>();
+                Vector3 targetDir = rayTargets[i] - cameraPos;
+                float targetDist = targetDir.magnitude;
                 
-                if (hitNode != node)
+                if (Physics.Raycast(cameraPos, targetDir, out RaycastHit hitInfo, targetDist - 0.01f, occlusionLayerMask))
                 {
-                    // Fallback for WSSharedMaterialNode which uses an external collider as a gaze target
-                    if (node is WSSharedMaterialNode sharedNode && sharedNode.primaryGazeTarget == hitInfo.collider)
+                    WSPlacementNode hitNode = hitInfo.collider.GetComponentInParent<WSPlacementNode>();
+                    if (hitNode != node)
                     {
-                        // It hit the correct target collider for the shared node
-                    }
-                    else if (node is WSGhostNode ghostNode && ghostNode.targetCollider == hitInfo.collider)
-                    {
-                        // It hit the correct target collider for the ghost node
-                    }
-                    else
-                    {
-                        if (enableDebugLogs) Debug.Log($"[WSGazeVerificationEngine] {node.placementId} failed: Occluded by {hitInfo.collider.gameObject.name}");
-                        return false;
+                        // Fallback for WSSharedMaterialNode which uses an external collider as a gaze target
+                        bool isValidHit = false;
+                        if (node is WSSharedMaterialNode sharedNode && sharedNode.primaryGazeTarget == hitInfo.collider)
+                        {
+                            isValidHit = true;
+                        }
+                        else if (node is WSGhostNode ghostNode && ghostNode.targetCollider == hitInfo.collider)
+                        {
+                            isValidHit = true;
+                        }
+                        
+                        if (!isValidHit)
+                        {
+                            occlusionHits++;
+                        }
                     }
                 }
+            }
+
+            occlusionPercentage = occlusionHits / 5.0f;
+            
+            // If the center is blocked, or more than 3 points are blocked, consider it occluded
+            if (occlusionHits >= 3)
+            {
+                if (enableDebugLogs) Debug.Log($"[WSGazeVerificationEngine] {node.placementId} failed: Highly Occluded ({occlusionPercentage * 100}%)");
+                return false;
             }
 
             return true;
@@ -264,7 +301,14 @@ namespace WireSyndicate.SDK
             
             if (WSTelemetryDispatcher.Instance != null)
             {
-                WSTelemetryDispatcher.Instance.DispatchImpression(node.placementId, state.currentDwellTime, state.peakScreenCoverage);
+                SpatialData spatial = new SpatialData
+                {
+                    distance_to_camera = state.lastDistance,
+                    angle_of_incidence = state.lastAngle,
+                    on_screen_percentage = state.peakScreenCoverage,
+                    occlusion_percentage = state.lastOcclusionPercentage
+                };
+                WSTelemetryDispatcher.Instance.DispatchImpression(node.placementId, state.currentDwellTime, state.peakScreenCoverage, spatial);
             }
             else
             {

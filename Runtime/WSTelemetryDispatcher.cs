@@ -8,12 +8,22 @@ using UnityEngine.Networking;
 namespace WireSyndicate.SDK
 {
     [System.Serializable]
+    public class SpatialData
+    {
+        public float distance_to_camera;
+        public float angle_of_incidence;
+        public float on_screen_percentage;
+        public float occlusion_percentage;
+    }
+
+    [System.Serializable]
     public class TelemetryPayload
     {
         public string placementId;
         public string gameId;
         public int durationMs;
         public float screenCoverage;
+        public SpatialData spatial_data;
     }
 
     public class WSTelemetryDispatcher : MonoBehaviour
@@ -93,23 +103,24 @@ namespace WireSyndicate.SDK
 
         private System.Collections.Concurrent.ConcurrentQueue<TelemetryPayload> _dispatchQueue = new System.Collections.Concurrent.ConcurrentQueue<TelemetryPayload>();
 
-        public void DispatchImpression(string placementId, float durationSeconds, float screenCoverage)
+        public void DispatchImpression(string placementId, float durationSec, float screenCoverage, SpatialData spatialData)
         {
+            if (!_isAuthenticated) return;
             if (string.IsNullOrEmpty(gameId))
             {
                 Debug.LogWarning("[WSTelemetryDispatcher] GameId is not configured. Aborting telemetry dispatch.");
                 return;
             }
 
-            int durationMs = Mathf.RoundToInt(durationSeconds * 1000f);
-            
-            _dispatchQueue.Enqueue(new TelemetryPayload
+            var payload = new TelemetryPayload
             {
                 placementId = placementId,
-                gameId = gameId,
-                durationMs = durationMs,
-                screenCoverage = screenCoverage
-            });
+                gameId = this.gameId,
+                durationMs = Mathf.RoundToInt(durationSec * 1000f),
+                screenCoverage = screenCoverage,
+                spatial_data = spatialData
+            };
+            _dispatchQueue.Enqueue(payload);
         }
 
         private void Update()
