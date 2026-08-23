@@ -39,6 +39,8 @@ namespace WireSyndicate.SDK
             return targetRenderer != null ? targetRenderer.bounds : GetComponent<Collider>().bounds;
         }
 
+        public virtual void OnVisibilityChanged(bool isVisible) { }
+
         public virtual Vector3 GetForward()
         {
             return targetRenderer != null ? targetRenderer.transform.forward : transform.forward;

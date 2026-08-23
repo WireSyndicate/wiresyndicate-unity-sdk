@@ -31,6 +31,7 @@ namespace WireSyndicate.SDK
             public float currentDwellTime;
             public float peakScreenCoverage;
             public bool hasSurpassedThreshold;
+        public bool isCurrentlyVisible;
         }
 
         private Dictionary<WSPlacementNode, GazeState> nodeStates = new Dictionary<WSPlacementNode, GazeState>();
@@ -116,6 +117,11 @@ namespace WireSyndicate.SDK
                 GazeState state = nodeStates[node];
                 float currentCoverage;
                 bool isVerified = EvaluateNode(node, cameraPos, cameraForward, out currentCoverage);
+
+                if (isVerified != state.isCurrentlyVisible) {
+                    state.isCurrentlyVisible = isVerified;
+                    node.OnVisibilityChanged(isVerified);
+                }
 
                 if (isVerified)
                 {

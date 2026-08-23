@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.Video;
 
 namespace WireSyndicate.SDK
 {
@@ -33,6 +34,9 @@ namespace WireSyndicate.SDK
         [Tooltip("The index of the material array on the Renderer. Element 1 = Index 1.")]
         [SerializeField] private int materialIndex = 0;
 
+        [Tooltip("Optional: Assign a specific RenderTexture to stream video into. If null, a dynamic one will be generated based on the asset aspect ratio.")]
+        [SerializeField] private RenderTexture targetRenderTexture;
+
         [Header("Atlas & Shader Overrides")]
         [Tooltip("Forcefully overrides the material's UV Scale/Offset to 1x1, neutralizing base texture atlases that could distort the ad.")]
         [SerializeField] private bool overrideUVScaleOffset = true;
@@ -43,6 +47,8 @@ namespace WireSyndicate.SDK
         // Internal references
         private MaterialPropertyBlock _propBlock;
         private Texture2D _activeTexture;
+        private VideoPlayer _videoPlayer;
+        private bool _isVideo = false;
 
         private void Awake()
         {
@@ -65,7 +71,7 @@ namespace WireSyndicate.SDK
             }
 
             // Route asset fetching directly through the core engine to leverage disk caching and the unified connection.
-            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyTextureSafely);
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely);
         }
 
         public override Bounds GetBounds()
@@ -97,64 +103,27 @@ namespace WireSyndicate.SDK
             return base.GetBounds();
         }
 
-        private void ApplyTextureSafely(Texture2D texture)
+        private void ApplyAssetSafely(WireSyndicate.Core.AssetDeliveryResult result)
         {
-            if (texture != null)
+            if (result != null)
             {
-                Debug.Log($"[WSPlacementDynamic] Texture downloaded successfully. Applying to MeshRenderer on '{gameObject.name}'...");
+                Debug.Log($"[WSPlacementDynamic] Asset received successfully. Format: {result.Format}. Applying to '{gameObject.name}'...");
                 try
                 {
-                    // THE ARCHITECT'S LESSON: Non-Destructive Texture Swapping
-                    // Using MaterialPropertyBlock prevents the creation of new material instances in memory,
-                    // avoiding memory leaks and keeping the base material untouched.
-                    
-                    if (_activeTexture != null && _activeTexture != texture)
+                    if (result.Format != null && result.Format.ToLower().Contains("video"))
                     {
-                        Destroy(_activeTexture);
+                        _isVideo = true;
+                        ApplyVideo(result.VideoUrl);
                     }
-                    _activeTexture = texture;
-
-                    if (targetRenderers != null && targetRenderers.Length > 0)
+                    else
                     {
-                        foreach (var targetRenderer in targetRenderers)
-                        {
-                            if (targetRenderer == null) continue;
-
-                            if (materialIndex < 0 || materialIndex >= targetRenderer.sharedMaterials.Length)
-                            {
-                                Debug.LogError($"[WSPlacementDynamic] Skipped renderer '{targetRenderer.name}' on '{gameObject.name}': Material Index ({materialIndex}) is out of bounds (only {targetRenderer.sharedMaterials.Length} materials).");
-                                continue;
-                            }
-
-                            targetRenderer.GetPropertyBlock(_propBlock, materialIndex);
-                            _propBlock.SetTexture(texturePropertyName, texture);
-                            
-                            if (overrideUVScaleOffset)
-                            {
-                                // Hijack the atlas math by forcing Scale 1x1 and Offset 0,0
-                                _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
-                            }
-                            
-                            if (shaderPropertyOverrides != null)
-                            {
-                                foreach (var floatOverride in shaderPropertyOverrides)
-                                {
-                                    if (!string.IsNullOrEmpty(floatOverride.propertyName))
-                                    {
-                                        _propBlock.SetFloat(floatOverride.propertyName, floatOverride.value);
-                                    }
-                                }
-                            }
-                            
-                            targetRenderer.SetPropertyBlock(_propBlock, materialIndex);
-                        }
+                        _isVideo = false;
+                        ApplyTexture(result.Texture);
                     }
-                    
-                    Debug.Log($"[WireSyndicate] Texture swapped successfully for '{gameObject.name}' (Placement: {placementId}).");
                 }
                 catch (System.Exception ex)
                 {
-                    Debug.LogError($"[WSPlacementDynamic] FATAL: Failed to apply texture to material. Exception: {ex.Message}");
+                    Debug.LogError($"[WSPlacementDynamic] FATAL: Failed to apply asset. Exception: {ex.Message}");
                 }
             }
             else
@@ -169,6 +138,88 @@ namespace WireSyndicate.SDK
             }
         }
 
+        private void ApplyTexture(Texture texture)
+        {
+            if (targetRenderers != null && targetRenderers.Length > 0)
+            {
+                foreach (var targetRenderer in targetRenderers)
+                {
+                    if (targetRenderer == null) continue;
+
+                    if (materialIndex < 0 || materialIndex >= targetRenderer.sharedMaterials.Length)
+                    {
+                        Debug.LogError($"[WSPlacementDynamic] Skipped renderer '{targetRenderer.name}' on '{gameObject.name}': Material Index ({materialIndex}) is out of bounds (only {targetRenderer.sharedMaterials.Length} materials).");
+                        continue;
+                    }
+
+                    targetRenderer.GetPropertyBlock(_propBlock, materialIndex);
+                    _propBlock.SetTexture(texturePropertyName, texture);
+                    
+                    if (overrideUVScaleOffset)
+                    {
+                        // Hijack the atlas math by forcing Scale 1x1 and Offset 0,0
+                        _propBlock.SetVector(texturePropertyName + "_ST", new Vector4(1, 1, 0, 0));
+                    }
+                    
+                    if (shaderPropertyOverrides != null)
+                    {
+                        foreach (var floatOverride in shaderPropertyOverrides)
+                        {
+                            if (!string.IsNullOrEmpty(floatOverride.propertyName))
+                            {
+                                _propBlock.SetFloat(floatOverride.propertyName, floatOverride.value);
+                            }
+                        }
+                    }
+                    
+                    targetRenderer.SetPropertyBlock(_propBlock, materialIndex);
+                }
+            }
+            Debug.Log($"[WireSyndicate] Texture mapped successfully for '{gameObject.name}'.");
+        }
+
+        private void ApplyVideo(string videoUrl)
+        {
+            _videoPlayer = gameObject.AddComponent<VideoPlayer>();
+            _videoPlayer.playOnAwake = false;
+            _videoPlayer.isLooping = true;
+            _videoPlayer.source = VideoSource.Url;
+            _videoPlayer.url = videoUrl;
+            _videoPlayer.audioOutputMode = VideoAudioOutputMode.None;
+
+            if (targetRenderTexture == null)
+            {
+                // Dynamically create a RenderTexture assuming a 16:9 base for ads, could be tweaked via manifest
+                targetRenderTexture = new RenderTexture(1920, 1080, 0);
+            }
+
+            _videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+            _videoPlayer.targetTexture = targetRenderTexture;
+
+            ApplyTexture(targetRenderTexture);
+
+            _videoPlayer.Prepare();
+            _videoPlayer.prepareCompleted += (vp) => {
+                // Ensure it only plays if currently visible (gaze engine handled separately, but let's assume it should play immediately if no gaze block is active)
+                vp.Play();
+            };
+        }
+
+        public override void OnVisibilityChanged(bool isVisible)
+        {
+            if (_isVideo && _videoPlayer != null && _videoPlayer.isPrepared)
+            {
+                if (isVisible)
+                {
+                    _videoPlayer.Play();
+                }
+                else
+                {
+                    _videoPlayer.Pause();
+                }
+            }
+        }
+
         protected override void OnDestroy()
         {
             base.OnDestroy();
@@ -177,6 +228,11 @@ namespace WireSyndicate.SDK
             if (_activeTexture != null)
             {
                 Destroy(_activeTexture);
+            }
+
+            if (_isVideo && targetRenderTexture != null)
+            {
+                targetRenderTexture.Release();
             }
         }
     }

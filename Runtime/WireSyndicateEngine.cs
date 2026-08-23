@@ -23,13 +23,19 @@ namespace WireSyndicate.Core
     }
 
     [Serializable]
-    public class WireSyndicatePlacementData
+    public class WireSyndicateCreativeData
+    {
+        public string bid_id;
+        public string asset_url;
+        public string format;
+    }
+
+    [Serializable]
+    public class WireSyndicatePayload
     {
         public string placement_id;
-        public string format;
-        public string prominence;
-        public string asset_url;
-        public string contract_end_date;
+        public WireSyndicateCreativeData creative;
+        public int ttl_seconds;
     }
 
     [Serializable]
@@ -46,12 +52,11 @@ namespace WireSyndicate.Core
         public List<WireSyndicateCacheEntry> entries = new List<WireSyndicateCacheEntry>();
     }
 
-    [Serializable]
-    public class WireSyndicatePayload
+    public class AssetDeliveryResult
     {
-        public bool success;
-        public string error;
-        public WireSyndicatePlacementData data;
+        public Texture2D Texture;
+        public string VideoUrl;
+        public string Format;
     }
 
     public static class WireSyndicateEngine
@@ -70,7 +75,6 @@ namespace WireSyndicate.Core
 
             Config = config;
 
-            // Execute the Ephemeral Token Handshake immediately
             _ = WireSyndicate.SDK.WSTelemetryDispatcher.AuthenticateAsync(config.OrgId);
 
             if (WireSyndicate.SDK.WSTelemetryDispatcher.Instance == null)
@@ -89,7 +93,7 @@ namespace WireSyndicate.Core
                 Debug.Log($"[WireSyndicate] Engine initialized with OrgId: {config.OrgId}");
         }
 
-        public static void RequestAsset(string placementId, Action<Texture2D> onAssetLoaded)
+        public static void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded)
         {
             if (_coreBehaviour == null)
             {
@@ -107,18 +111,14 @@ namespace WireSyndicate.Core
         private string ManifestPath => Path.Combine(CacheDirectory, "WireSyndicate_manifest.json");
 
         private WireSyndicateCacheManifest _manifest;
-        private Dictionary<string, Texture2D> _activeTextures = new Dictionary<string, Texture2D>();
-        private Dictionary<string, List<Action<Texture2D>>> _pendingRequests = new Dictionary<string, List<Action<Texture2D>>>();
+        private Dictionary<string, AssetDeliveryResult> _activeAssets = new Dictionary<string, AssetDeliveryResult>();
+        private Dictionary<string, List<Action<AssetDeliveryResult>>> _pendingRequests = new Dictionary<string, List<Action<AssetDeliveryResult>>>();
 
         private void Awake()
         {
             InitializeCache();
             PurgeExpiredCache();
         }
-
-        // ==========================================
-        // DISK CACHE MANAGEMENT
-        // ==========================================
 
         private void InitializeCache()
         {
@@ -198,10 +198,6 @@ namespace WireSyndicate.Core
             File.WriteAllText(ManifestPath, json);
         }
 
-        // ==========================================
-        // API & NETWORK LOGIC
-        // ==========================================
-
         private string GetResolveUrl(string placementId)
         {
             string baseUrl = !string.IsNullOrEmpty(WireSyndicateEngine.Config.ApiBaseUrl)
@@ -214,7 +210,8 @@ namespace WireSyndicate.Core
         private IEnumerator ResolvePlacement(string placementId)
         {
             string url = GetResolveUrl(placementId);
-            Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{placementId}' at: {url}...");
+            if (WireSyndicateEngine.Config.EnableDebugLogging)
+                Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{placementId}' at: {url}...");
 
             using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
             {
@@ -235,12 +232,30 @@ namespace WireSyndicate.Core
                 }
 
                 string json = webRequest.downloadHandler.text;
-                WireSyndicatePayload response = JsonUtility.FromJson<WireSyndicatePayload>(json);
+                WireSyndicatePayload response = null;
+                try {
+                    response = JsonUtility.FromJson<WireSyndicatePayload>(json);
+                } catch(Exception e) {
+                    Debug.LogError($"[WireSyndicateEngine] JSON Parse Error: {e.Message}");
+                }
 
-                if (response != null && response.success && response.data != null)
+                if (response != null && response.creative != null && !string.IsNullOrEmpty(response.creative.asset_url))
                 {
-                    Debug.Log($"[WireSyndicateEngine] Delivery resolved for {placementId}. Extracting asset URL...");
-                    StartCoroutine(LoadOrDownloadTexture(response.data));
+                    if (WireSyndicateEngine.Config.EnableDebugLogging)
+                        Debug.Log($"[WireSyndicateEngine] Delivery resolved for {placementId}. Extracting asset URL...");
+                    
+                    bool isVideo = response.creative.format != null && response.creative.format.ToLower().Contains("video");
+
+                    if (isVideo) {
+                        AssetDeliveryResult result = new AssetDeliveryResult {
+                            VideoUrl = response.creative.asset_url,
+                            Format = response.creative.format
+                        };
+                        _activeAssets[response.placement_id] = result;
+                        FulfillPendingRequests(response.placement_id, result);
+                    } else {
+                        StartCoroutine(LoadOrDownloadTexture(response));
+                    }
                 }
                 else
                 {
@@ -252,14 +267,12 @@ namespace WireSyndicate.Core
 
         private async System.Threading.Tasks.Task<Texture2D> LoadTextureAsync(string filePath)
         {
-            // Ensure the path is properly formatted for local file requests
             string uri = "file://" + filePath.Replace("\\", "/");
 
             using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(uri))
             {
                 var asyncOperation = uwr.SendWebRequest();
 
-                // Yield back to the Unity main thread until the native worker finishes decoding
                 while (!asyncOperation.isDone)
                 {
                     await System.Threading.Tasks.Task.Yield();
@@ -276,10 +289,11 @@ namespace WireSyndicate.Core
             }
         }
 
-        private IEnumerator LoadOrDownloadTexture(WireSyndicatePlacementData placementData)
+        private IEnumerator LoadOrDownloadTexture(WireSyndicatePayload payload)
         {
-            string safeFileName = placementData.asset_url.GetHashCode().ToString() + ".png";
+            string safeFileName = payload.creative.asset_url.GetHashCode().ToString() + ".png";
             string localFilePath = Path.Combine(CacheDirectory, safeFileName);
+            string endDateString = DateTime.UtcNow.AddSeconds(payload.ttl_seconds).ToString("o");
 
             Texture2D textureToApply = null;
 
@@ -291,7 +305,7 @@ namespace WireSyndicate.Core
             }
             else
             {
-                using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(placementData.asset_url))
+                using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(payload.creative.asset_url))
                 {
                     yield return uwr.SendWebRequest();
 
@@ -299,29 +313,35 @@ namespace WireSyndicate.Core
                     {
                         textureToApply = DownloadHandlerTexture.GetContent(uwr);
                         File.WriteAllBytes(localFilePath, uwr.downloadHandler.data);
-                        RegisterDownloadedAsset(placementData.asset_url, safeFileName, placementData.contract_end_date);
+                        RegisterDownloadedAsset(payload.creative.asset_url, safeFileName, endDateString);
                     }
                     else
                     {
-                        Debug.LogError($"[WireSyndicateEngine] Texture download failed for URL {placementData.asset_url}: {uwr.error}");
+                        Debug.LogError($"[WireSyndicateEngine] Texture download failed for URL {payload.creative.asset_url}: {uwr.error}");
                     }
                 }
             }
 
             if (textureToApply != null)
             {
-                _activeTextures[placementData.placement_id] = textureToApply;
-                FulfillPendingRequests(placementData.placement_id, textureToApply);
+                AssetDeliveryResult result = new AssetDeliveryResult {
+                    Texture = textureToApply,
+                    Format = payload.creative.format
+                };
+                _activeAssets[payload.placement_id] = result;
+                FulfillPendingRequests(payload.placement_id, result);
+            } else {
+                FulfillPendingRequests(payload.placement_id, null);
             }
         }
 
-        public void RequestAsset(string placementId, Action<Texture2D> onAssetLoaded)
+        public void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded)
         {
             placementId = placementId != null ? placementId.Trim() : "";
 
-            if (_activeTextures.ContainsKey(placementId))
+            if (_activeAssets.ContainsKey(placementId))
             {
-                onAssetLoaded?.Invoke(_activeTextures[placementId]);
+                onAssetLoaded?.Invoke(_activeAssets[placementId]);
             }
             else
             {
@@ -329,7 +349,7 @@ namespace WireSyndicate.Core
                 
                 if (isFirstRequest)
                 {
-                    _pendingRequests[placementId] = new List<Action<Texture2D>>();
+                    _pendingRequests[placementId] = new List<Action<AssetDeliveryResult>>();
                 }
                 _pendingRequests[placementId].Add(onAssetLoaded);
 
@@ -340,13 +360,13 @@ namespace WireSyndicate.Core
             }
         }
 
-        private void FulfillPendingRequests(string placementId, Texture2D texture)
+        private void FulfillPendingRequests(string placementId, AssetDeliveryResult result)
         {
             if (_pendingRequests.ContainsKey(placementId))
             {
                 foreach (var callback in _pendingRequests[placementId])
                 {
-                    callback?.Invoke(texture);
+                    callback?.Invoke(result);
                 }
                 _pendingRequests.Remove(placementId);
             }

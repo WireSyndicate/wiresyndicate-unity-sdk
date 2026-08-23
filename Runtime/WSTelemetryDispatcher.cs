@@ -91,6 +91,8 @@ namespace WireSyndicate.SDK
             }
         }
 
+        private System.Collections.Concurrent.ConcurrentQueue<TelemetryPayload> _dispatchQueue = new System.Collections.Concurrent.ConcurrentQueue<TelemetryPayload>();
+
         public void DispatchImpression(string placementId, float durationSeconds, float screenCoverage)
         {
             if (string.IsNullOrEmpty(gameId))
@@ -101,27 +103,33 @@ namespace WireSyndicate.SDK
 
             int durationMs = Mathf.RoundToInt(durationSeconds * 1000f);
             
-            // Dispatch async without waiting in the synchronous method
-            _ = DispatchImpressionAsync(placementId, durationMs, screenCoverage);
-        }
-
-        private async Task<bool> DispatchImpressionAsync(string placementId, int durationMs, float screenCoverage)
-        {
-            if (!_isAuthenticated)
-            {
-                Debug.LogError("[WireSyndicate] Cannot dispatch telemetry: SDK lacks a valid session token.");
-                return false;
-            }
-
-            TelemetryPayload payload = new TelemetryPayload
+            _dispatchQueue.Enqueue(new TelemetryPayload
             {
                 placementId = placementId,
                 gameId = gameId,
                 durationMs = durationMs,
                 screenCoverage = screenCoverage
-            };
-            string jsonPayload = JsonUtility.ToJson(payload);
+            });
+        }
 
+        private void Update()
+        {
+            // Dequeue on the main thread
+            while (_dispatchQueue.TryDequeue(out var payload))
+            {
+                StartCoroutine(DispatchRoutine(payload));
+            }
+        }
+
+        private IEnumerator DispatchRoutine(TelemetryPayload payload)
+        {
+            if (!_isAuthenticated)
+            {
+                Debug.LogError("[WireSyndicate] Cannot dispatch telemetry: SDK lacks a valid session token.");
+                yield break;
+            }
+
+            string jsonPayload = JsonUtility.ToJson(payload);
             string signature = WSCryptography.GenerateHMAC(jsonPayload, _handshakeSecret);
 
             string baseUrl = WireSyndicateInitializer.Instance != null && !string.IsNullOrWhiteSpace(WireSyndicateInitializer.Instance.apiBaseUrl)
@@ -137,21 +145,18 @@ namespace WireSyndicate.SDK
                 request.downloadHandler = new DownloadHandlerBuffer();
                 
                 request.SetRequestHeader("Content-Type", "application/json");
-                
                 request.SetRequestHeader("Authorization", $"Bearer {_sessionToken}");
                 request.SetRequestHeader("X-WS-Signature", signature);
 
-                var operation = request.SendWebRequest();
-                while (!operation.isDone) await Task.Yield();
+                yield return request.SendWebRequest();
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
                     Debug.LogError($"[WireSyndicate] Perimeter Rejected Telemetry: {request.error}");
-                    return false;
+                    yield break;
                 }
 
                 Debug.Log("[WireSyndicate] Signed Token burned. Financial clearing executed.");
-                return true;
             }
         }
     }
