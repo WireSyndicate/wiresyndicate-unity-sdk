@@ -1,0 +1,58 @@
+name: UPM Receiver Workflow (Unity SDK Sync)
+
+on:
+  repository_dispatch:
+    types: [api_contract_update]
+
+jobs:
+  generate_and_release:
+    name: Generate C# Models and Release UPM
+    runs-on: ubuntu-latest
+    if: contains(github.event.client_payload.target_engines, 'unity')
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js v20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      - name: Validate Payload & Download Schema
+        run: |
+          echo "Target Version: ${{ github.event.client_payload.version }}"
+          echo "Schema URL: ${{ github.event.client_payload.api_schema_url }}"
+          
+          curl -sS -L -o api_schema.json "${{ github.event.client_payload.api_schema_url }}"
+          
+      - name: Generate C# Models (netstandard2.0)
+        run: |
+          # Execute the official OpenAPITools generator via npx
+          npx @openapitools/openapi-generator-cli generate \
+            -i api_schema.json \
+            -g csharp \
+            -o Runtime/Models \
+            --additional-properties=targetFramework=netstandard2.0,packageName=WireSyndicate.SDK.Models
+            
+      - name: Update UPM package.json Version
+        run: |
+          NEW_VERSION="${{ github.event.client_payload.version }}"
+          
+          # Use jq to safely mutate the JSON version property
+          jq ".version = \"$NEW_VERSION\"" package.json > package.tmp.json && mv package.tmp.json package.json
+          
+      - name: Commit and Tag Release
+        run: |
+          NEW_VERSION="${{ github.event.client_payload.version }}"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add package.json Runtime/Models/
+          git commit -m "chore(release): synchronize OpenAPI models and bump UPM to v$NEW_VERSION [skip ci]"
+          git push origin main
+          
+          git tag "v$NEW_VERSION"
+          git push origin "v$NEW_VERSION"
