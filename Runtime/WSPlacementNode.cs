@@ -7,6 +7,8 @@ namespace WireSyndicate.SDK
         [Tooltip("The UUID of the placement registered in the WireSyndicate portal.")]
         public string placementId;
 
+        public string ActiveBidId { get; protected set; }
+
         [Tooltip("The specific renderer to analyze. If left empty, it will automatically locate one in children.")]
         [SerializeField] private Renderer targetRenderer;
 

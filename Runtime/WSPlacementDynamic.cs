@@ -108,6 +108,7 @@ namespace WireSyndicate.SDK
             if (result != null)
             {
                 Debug.Log($"[WSPlacementDynamic] Asset received successfully. Format: {result.Format}. Applying to '{gameObject.name}'...");
+                this.ActiveBidId = result.BidId;
                 try
                 {
                     if (result.Format != null && result.Format.ToLower().Contains("video"))

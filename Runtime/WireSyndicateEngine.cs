@@ -57,6 +57,7 @@ namespace WireSyndicate.Core
         public Texture2D Texture;
         public string VideoUrl;
         public string Format;
+        public string BidId;
     }
 
     public static class WireSyndicateEngine
@@ -249,7 +250,8 @@ namespace WireSyndicate.Core
                     if (isVideo) {
                         AssetDeliveryResult result = new AssetDeliveryResult {
                             VideoUrl = response.creative.asset_url,
-                            Format = response.creative.format
+                            Format = response.creative.format,
+                            BidId = response.creative.bid_id
                         };
                         _activeAssets[response.placement_id] = result;
                         FulfillPendingRequests(response.placement_id, result);
@@ -326,7 +328,8 @@ namespace WireSyndicate.Core
             {
                 AssetDeliveryResult result = new AssetDeliveryResult {
                     Texture = textureToApply,
-                    Format = payload.creative.format
+                    Format = payload.creative.format,
+                    BidId = payload.creative.bid_id
                 };
                 _activeAssets[payload.placement_id] = result;
                 FulfillPendingRequests(payload.placement_id, result);

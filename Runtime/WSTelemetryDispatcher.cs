@@ -19,8 +19,9 @@ namespace WireSyndicate.SDK
     [System.Serializable]
     public class TelemetryPayload
     {
+        public string impression_token;
         public string placementId;
-        public string gameId;
+        public string bid_id;
         public int durationMs;
         public float screenCoverage;
         public SpatialData spatial_data;
@@ -103,19 +104,15 @@ namespace WireSyndicate.SDK
 
         private System.Collections.Concurrent.ConcurrentQueue<TelemetryPayload> _dispatchQueue = new System.Collections.Concurrent.ConcurrentQueue<TelemetryPayload>();
 
-        public void DispatchImpression(string placementId, float durationSec, float screenCoverage, SpatialData spatialData)
+        public void DispatchImpression(string impressionToken, string placementId, string bidId, float durationSec, float screenCoverage, SpatialData spatialData)
         {
             if (!_isAuthenticated) return;
-            if (string.IsNullOrEmpty(gameId))
-            {
-                Debug.LogWarning("[WSTelemetryDispatcher] GameId is not configured. Aborting telemetry dispatch.");
-                return;
-            }
 
             var payload = new TelemetryPayload
             {
+                impression_token = impressionToken,
                 placementId = placementId,
-                gameId = this.gameId,
+                bid_id = bidId,
                 durationMs = Mathf.RoundToInt(durationSec * 1000f),
                 screenCoverage = screenCoverage,
                 spatial_data = spatialData
