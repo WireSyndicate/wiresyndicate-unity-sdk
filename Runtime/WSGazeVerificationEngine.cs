@@ -308,7 +308,8 @@ namespace WireSyndicate.SDK
                     on_screen_percentage = state.peakScreenCoverage,
                     occlusion_percentage = state.lastOcclusionPercentage
                 };
-                WSTelemetryDispatcher.Instance.DispatchImpression(node.placementId, state.currentDwellTime, state.peakScreenCoverage, spatial);
+                string impressionToken = System.Guid.NewGuid().ToString();
+                WSTelemetryDispatcher.Instance.DispatchImpression(impressionToken, node.placementId, node.ActiveBidId, state.currentDwellTime, state.peakScreenCoverage, spatial);
             }
             else
             {
