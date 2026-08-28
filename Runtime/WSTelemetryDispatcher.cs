@@ -123,11 +123,32 @@ namespace WireSyndicate.SDK
             _dispatchQueue.Enqueue(payload);
         }
 
+        private int _activeRequests = 0;
+        private const int MaxConcurrentRequests = 5;
+
+        private void Start()
+        {
+            // Initialize the background worker on startup
+            StartCoroutine(OfflineCacheDrainWorker());
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            // Immediately attempt re-hydration when the user returns to the game 
+            // (e.g., pulling the app out of background state on mobile)
+            if (hasFocus)
+            {
+                StartCoroutine(AttemptRehydration());
+            }
+        }
+
         private void Update()
         {
-            // Dequeue on the main thread
-            while (_dispatchQueue.TryDequeue(out var payload))
+            // Continuously dequeue on the main thread, constrained by the semaphore limit
+            // Prevents socket exhaustion during massive telemetry queue flushes
+            while (_activeRequests < MaxConcurrentRequests && _dispatchQueue.TryDequeue(out var payload))
             {
+                _activeRequests++;
                 StartCoroutine(DispatchRoutine(payload));
             }
         }
@@ -137,6 +158,7 @@ namespace WireSyndicate.SDK
             if (!_isAuthenticated)
             {
                 Debug.LogError("[WireSyndicate] Cannot dispatch telemetry: SDK lacks a valid session token.");
+                _activeRequests--;
                 yield break;
             }
 
@@ -161,13 +183,51 @@ namespace WireSyndicate.SDK
 
                 yield return request.SendWebRequest();
 
-                if (request.result != UnityWebRequest.Result.Success)
+                if (request.responseCode == 202)
                 {
-                    Debug.LogError($"[WireSyndicate] Perimeter Rejected Telemetry: {request.error}");
-                    yield break;
+                    Debug.Log($"[WireSyndicate] Telemetry queued successfully at Edge (202 Accepted). Impression: {payload.placementId}");
                 }
+                else
+                {
+                    Debug.LogError($"[WireSyndicate] Edge Ingestion Failed ({request.responseCode}): {request.error}. Triggering local fallback queue.");
+                    // NEW: Serialize the dropped payload to disk for offline recovery
+                    WireSyndicate.SDK.Telemetry.WSOfflineTelemetryCache.CachePayload(payload);
+                }
+            }
 
-                Debug.Log("[WireSyndicate] Signed Token burned. Financial clearing executed.");
+            // Release the concurrency semaphore
+            _activeRequests--;
+        }
+
+        private IEnumerator OfflineCacheDrainWorker()
+        {
+            // Poll every 60 seconds
+            WaitForSeconds waitInterval = new WaitForSeconds(60f);
+            while (true)
+            {
+                yield return waitInterval;
+                yield return AttemptRehydration();
+            }
+        }
+
+        private IEnumerator AttemptRehydration()
+        {
+            // Abort instantly if no internet connection is detected by the OS
+            if (Application.internetReachability == NetworkReachability.NotReachable)
+            {
+                yield break;
+            }
+
+            var cachedPayloads = WireSyndicate.SDK.Telemetry.WSOfflineTelemetryCache.GetAndClearCache();
+            if (cachedPayloads.Count == 0) yield break;
+
+            Debug.Log($"[WireSyndicate] Network restored. Draining {cachedPayloads.Count} recovered payloads from offline cache.");
+
+            foreach (var payload in cachedPayloads)
+            {
+                // Route recovered payloads back through the standard Edge ingestion pipeline
+                // The DispatchRoutine will naturally handle recalculating HMACs if required
+                _dispatchQueue.Enqueue(payload);
             }
         }
     }
