@@ -176,6 +176,33 @@ namespace WireSyndicate.SDK
                 }
             }
             Debug.Log($"[WireSyndicate] Texture mapped successfully for '{gameObject.name}'.");
+            StartCoroutine(DispatchTelemetry());
+        }
+
+        private IEnumerator DispatchTelemetry()
+        {
+            long vramBytes = UnityEngine.Profiling.Profiler.GetAllocatedMemoryForGraphicsDriver();
+            float vramMb = vramBytes / (1024f * 1024f);
+            bool gcTriggered = false;
+            string sessionId = System.Guid.NewGuid().ToString();
+            
+            string jsonPayload = $"{{\"placement_id\": \"{placementId}\", \"session_id\": \"{sessionId}\", \"engine\": \"unity\", \"vram_allocated_mb\": {vramMb}, \"gc_triggered\": {(gcTriggered ? "true" : "false")}}}";
+            
+            string url = WireSyndicate.Core.WireSyndicateEngine.Instance.ApiBaseUrl + "/api/v1/telemetry/client";
+            using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+            {
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                yield return request.SendWebRequest();
+
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogWarning($"[WireSyndicate] Non-critical telemetry dispatch failed: {request.error}");
+                }
+            }
         }
 
         private void ApplyVideo(string videoUrl)
