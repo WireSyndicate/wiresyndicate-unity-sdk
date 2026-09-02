@@ -5,17 +5,17 @@ using UnityEngine;
 
 namespace WireSyndicate.SDK.Telemetry
 {
-    /// <summary>
-    /// Wrapper class required because Unity's native JsonUtility cannot serialize top-level Lists or Arrays.
-    /// </summary>
-    [Serializable]
-    private class CacheWrapper
-    {
-        public List<TelemetryPayload> payloads = new List<TelemetryPayload>();
-    }
-
     public static class WSOfflineTelemetryCache
     {
+        /// <summary>
+        /// Wrapper class required because Unity's native JsonUtility cannot serialize top-level Lists or Arrays.
+        /// </summary>
+        [Serializable]
+        private class CacheWrapper
+        {
+            public List<TelemetryPayload> payloads = new List<TelemetryPayload>();
+        }
+
         // Cache written to the OS-approved persistent data directory to survive app closures
         private static string CacheFilePath => Path.Combine(Application.persistentDataPath, "ws_telemetry_dlq.json");
         private static readonly object _fileLock = new object();

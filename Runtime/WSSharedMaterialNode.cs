@@ -102,8 +102,9 @@ namespace WireSyndicate.SDK
             return primaryGazeTarget != null ? primaryGazeTarget.transform.forward : base.GetForward();
         }
 
-        private void ApplyTextureSafely(Texture2D texture)
+        private void ApplyTextureSafely(WireSyndicate.Core.AssetDeliveryResult result)
         {
+            Texture2D texture = result?.Texture;
             if (texture != null)
             {
                 Debug.Log($"[WSSharedMaterialNode] Texture downloaded successfully. Applying to GLOBAL Material '{targetMaterial.name}'...");

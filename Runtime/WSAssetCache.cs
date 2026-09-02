@@ -3,7 +3,7 @@ using System.IO;
 using System.Linq;
 using UnityEngine;
 
-namespace WireSyndicate
+namespace WireSyndicate.Core
 {
     public static class WSAssetCache
     {

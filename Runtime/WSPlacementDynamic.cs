@@ -191,7 +191,7 @@ namespace WireSyndicate.SDK
             string hashPart = string.IsNullOrEmpty(assetHash) ? "null" : $"\"{assetHash}\"";
             string jsonPayload = $"{{\"placement_id\": \"{placementId}\", \"session_id\": \"{sessionId}\", \"engine\": \"unity\", \"vram_allocated_mb\": {vramMb}, \"gc_triggered\": {(gcTriggered ? "true" : "false")}, \"cache_hit\": {(isCacheHit ? "true" : "false")}, \"asset_hash\": {hashPart}}}";
             
-            string url = WireSyndicate.Core.WireSyndicateEngine.Instance.ApiBaseUrl + "/api/v1/telemetry/client";
+            string url = WireSyndicate.Core.WireSyndicateEngine.Config.ApiBaseUrl + "/api/v1/telemetry/client";
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
                 byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
