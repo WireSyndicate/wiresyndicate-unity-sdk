@@ -105,6 +105,8 @@ namespace WireSyndicate.SDK
 
         private void ApplyAssetSafely(WireSyndicate.Core.AssetDeliveryResult result)
         {
+            if (this == null) return;
+
             if (result != null)
             {
                 Debug.Log($"[WSPlacementDynamic] Asset received successfully. Format: {result.Format}. Applying to '{gameObject.name}'...");
@@ -113,12 +115,12 @@ namespace WireSyndicate.SDK
                     if (result.Format != null && result.Format.ToLower().Contains("video"))
                     {
                         _isVideo = true;
-                        ApplyVideo(result.VideoUrl);
+                        ApplyVideo(result.VideoUrl, result.IsCacheHit, result.AssetHash);
                     }
                     else
                     {
                         _isVideo = false;
-                        ApplyTexture(result.Texture);
+                        ApplyTexture(result.Texture, result.IsCacheHit, result.AssetHash);
                     }
                 }
                 catch (System.Exception ex)
@@ -138,7 +140,7 @@ namespace WireSyndicate.SDK
             }
         }
 
-        private void ApplyTexture(Texture texture)
+        private void ApplyTexture(Texture texture, bool isCacheHit = false, string assetHash = null)
         {
             if (targetRenderers != null && targetRenderers.Length > 0)
             {
@@ -176,17 +178,18 @@ namespace WireSyndicate.SDK
                 }
             }
             Debug.Log($"[WireSyndicate] Texture mapped successfully for '{gameObject.name}'.");
-            StartCoroutine(DispatchTelemetry());
+            StartCoroutine(DispatchTelemetry(isCacheHit, assetHash));
         }
 
-        private IEnumerator DispatchTelemetry()
+        private IEnumerator DispatchTelemetry(bool isCacheHit, string assetHash)
         {
             long vramBytes = UnityEngine.Profiling.Profiler.GetAllocatedMemoryForGraphicsDriver();
             float vramMb = vramBytes / (1024f * 1024f);
             bool gcTriggered = false;
             string sessionId = System.Guid.NewGuid().ToString();
             
-            string jsonPayload = $"{{\"placement_id\": \"{placementId}\", \"session_id\": \"{sessionId}\", \"engine\": \"unity\", \"vram_allocated_mb\": {vramMb}, \"gc_triggered\": {(gcTriggered ? "true" : "false")}}}";
+            string hashPart = string.IsNullOrEmpty(assetHash) ? "null" : $"\"{assetHash}\"";
+            string jsonPayload = $"{{\"placement_id\": \"{placementId}\", \"session_id\": \"{sessionId}\", \"engine\": \"unity\", \"vram_allocated_mb\": {vramMb}, \"gc_triggered\": {(gcTriggered ? "true" : "false")}, \"cache_hit\": {(isCacheHit ? "true" : "false")}, \"asset_hash\": {hashPart}}}";
             
             string url = WireSyndicate.Core.WireSyndicateEngine.Instance.ApiBaseUrl + "/api/v1/telemetry/client";
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
@@ -205,7 +208,7 @@ namespace WireSyndicate.SDK
             }
         }
 
-        private void ApplyVideo(string videoUrl)
+        private void ApplyVideo(string videoUrl, bool isCacheHit = false, string assetHash = null)
         {
             _videoPlayer = gameObject.AddComponent<VideoPlayer>();
             _videoPlayer.playOnAwake = false;
@@ -223,7 +226,7 @@ namespace WireSyndicate.SDK
             _videoPlayer.renderMode = VideoRenderMode.RenderTexture;
             _videoPlayer.targetTexture = targetRenderTexture;
 
-            ApplyTexture(targetRenderTexture);
+            ApplyTexture(targetRenderTexture, isCacheHit, assetHash);
 
             _videoPlayer.Prepare();
             _videoPlayer.prepareCompleted += (vp) => {

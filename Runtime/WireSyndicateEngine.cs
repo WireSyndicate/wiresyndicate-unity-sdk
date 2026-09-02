@@ -16,26 +16,30 @@ namespace WireSyndicate.Core
 
     public class WireSyndicateConfig
     {
-        public string OrgId;
+        public string NetworkKey;
         public string GameId;
         public string ApiBaseUrl;
         public bool EnableDebugLogging = false;
     }
 
     [Serializable]
-    public class WireSyndicateCreativeData
+    public class WireSyndicateDeliveryData
     {
-        public string bid_id;
-        public string asset_url;
+        public string placement_id;
+        public string game_id;
         public string format;
+        public string prominence;
+        public string asset_url;
+        public string asset_hash;
+        public string contract_end_date;
     }
 
     [Serializable]
     public class WireSyndicatePayload
     {
-        public string placement_id;
-        public WireSyndicateCreativeData creative;
-        public int ttl_seconds;
+        public bool success;
+        public WireSyndicateDeliveryData data;
+        public string error;
     }
 
     [Serializable]
@@ -57,6 +61,9 @@ namespace WireSyndicate.Core
         public Texture2D Texture;
         public string VideoUrl;
         public string Format;
+        public string LocalFilePath;
+        public bool IsCacheHit;
+        public string AssetHash;
     }
 
     public static class WireSyndicateEngine
@@ -75,7 +82,7 @@ namespace WireSyndicate.Core
 
             Config = config;
 
-            _ = WireSyndicate.SDK.WSTelemetryDispatcher.AuthenticateAsync(config.OrgId);
+            _ = WireSyndicate.SDK.WSTelemetryDispatcher.AuthenticateAsync(config.NetworkKey);
 
             if (WireSyndicate.SDK.WSTelemetryDispatcher.Instance == null)
             {
@@ -90,7 +97,7 @@ namespace WireSyndicate.Core
             _coreBehaviour = coreObj.AddComponent<WireSyndicateCoreBehaviour>();
             
             if (config.EnableDebugLogging)
-                Debug.Log($"[WireSyndicate] Engine initialized with OrgId: {config.OrgId}");
+                Debug.Log($"[WireSyndicate] Engine initialized with NetworkKey: {config.NetworkKey}");
         }
 
         public static void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded)
@@ -118,6 +125,40 @@ namespace WireSyndicate.Core
         {
             InitializeCache();
             PurgeExpiredCache();
+            StartCoroutine(StartLocationService());
+        }
+
+        private IEnumerator StartLocationService()
+        {
+#if UNITY_ANDROID
+            if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.FineLocation))
+            {
+                UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.FineLocation);
+                // Wait for the user to respond to the dialog
+                yield return new WaitForSeconds(1.0f);
+            }
+#endif
+            if (!Input.location.isEnabledByUser)
+            {
+                if (WireSyndicateEngine.Config.EnableDebugLogging)
+                    Debug.Log("[WireSyndicate] OS Location services are disabled by the user. Graceful degradation active.");
+                yield break;
+            }
+
+            Input.location.Start(500f, 500f);
+
+            int maxWait = 10;
+            while (Input.location.status == LocationServiceStatus.Initializing && maxWait > 0)
+            {
+                yield return new WaitForSeconds(1);
+                maxWait--;
+            }
+
+            if (maxWait <= 0 || Input.location.status == LocationServiceStatus.Failed)
+            {
+                Debug.LogWarning("[WireSyndicate] OS Location service initialization failed or timed out. Graceful degradation active.");
+                yield break;
+            }
         }
 
         private void InitializeCache()
@@ -204,7 +245,14 @@ namespace WireSyndicate.Core
                 ? WireSyndicateEngine.Config.ApiBaseUrl.Trim().TrimEnd('/')
                 : "https://api.wiresyndicate.com";
 
-            return $"{baseUrl}/api/v1/delivery/resolve?placement_id={placementId}";
+            string url = $"{baseUrl}/api/v1/delivery/resolve?placement_id={placementId}";
+
+            if (Input.location.isEnabledByUser && Input.location.status == LocationServiceStatus.Running)
+            {
+                url += $"&lat={Input.location.lastData.latitude}&lng={Input.location.lastData.longitude}";
+            }
+
+            return url;
         }
 
         private IEnumerator ResolvePlacement(string placementId)
@@ -239,27 +287,30 @@ namespace WireSyndicate.Core
                     Debug.LogError($"[WireSyndicateEngine] JSON Parse Error: {e.Message}");
                 }
 
-                if (response != null && response.creative != null && !string.IsNullOrEmpty(response.creative.asset_url))
+                if (response != null && response.success && response.data != null && !string.IsNullOrEmpty(response.data.asset_url))
                 {
                     if (WireSyndicateEngine.Config.EnableDebugLogging)
                         Debug.Log($"[WireSyndicateEngine] Delivery resolved for {placementId}. Extracting asset URL...");
                     
-                    bool isVideo = response.creative.format != null && response.creative.format.ToLower().Contains("video");
+                    bool isVideo = response.data.format != null && response.data.format.ToLower().Contains("video");
+                    bool is3D = response.data.format != null && (response.data.format.ToLower().Contains("3d") || response.data.asset_url.EndsWith(".glb") || response.data.asset_url.EndsWith(".assetbundle"));
 
                     if (isVideo) {
                         AssetDeliveryResult result = new AssetDeliveryResult {
-                            VideoUrl = response.creative.asset_url,
-                            Format = response.creative.format
+                            VideoUrl = response.data.asset_url,
+                            Format = response.data.format
                         };
-                        _activeAssets[response.placement_id] = result;
-                        FulfillPendingRequests(response.placement_id, result);
+                        _activeAssets[response.data.placement_id] = result;
+                        FulfillPendingRequests(response.data.placement_id, result);
+                    } else if (is3D || !string.IsNullOrEmpty(response.data.asset_hash)) {
+                        StartCoroutine(LoadOrDownloadGenericAsset(response.data));
                     } else {
-                        StartCoroutine(LoadOrDownloadTexture(response));
+                        StartCoroutine(LoadOrDownloadTexture(response.data));
                     }
                 }
                 else
                 {
-                    Debug.LogError($"[WireSyndicateEngine] Failed to parse delivery resolve response for {placementId}. Payload: {json}");
+                    Debug.LogError($"[WireSyndicateEngine] Failed to parse delivery resolve response or unsuccessful for {placementId}. Payload: {json}");
                     FulfillPendingRequests(placementId, null);
                 }
             }
@@ -289,11 +340,59 @@ namespace WireSyndicate.Core
             }
         }
 
-        private IEnumerator LoadOrDownloadTexture(WireSyndicatePayload payload)
+        private IEnumerator LoadOrDownloadGenericAsset(WireSyndicateDeliveryData data)
         {
-            string safeFileName = payload.creative.asset_url.GetHashCode().ToString() + ".png";
+            string cachedPath = WSAssetCache.GetCachedAssetPath(data.asset_hash);
+            
+            if (!string.IsNullOrEmpty(cachedPath))
+            {
+                if (WireSyndicateEngine.Config.EnableDebugLogging)
+                    Debug.Log($"[WireSyndicateEngine] Asset matched hash {data.asset_hash}, loading from cache: {cachedPath}");
+                
+                AssetDeliveryResult result = new AssetDeliveryResult {
+                    LocalFilePath = cachedPath,
+                    Format = data.format,
+                    IsCacheHit = true,
+                    AssetHash = data.asset_hash
+                };
+                _activeAssets[data.placement_id] = result;
+                FulfillPendingRequests(data.placement_id, result);
+                yield break;
+            }
+
+            if (WireSyndicateEngine.Config.EnableDebugLogging)
+                Debug.Log($"[WireSyndicateEngine] Downloading generic asset for hash {data.asset_hash} from {data.asset_url}");
+
+            using (UnityWebRequest uwr = UnityWebRequest.Get(data.asset_url))
+            {
+                yield return uwr.SendWebRequest();
+
+                if (uwr.result == UnityWebRequest.Result.Success)
+                {
+                    string finalPath = WSAssetCache.CacheAsset(data.asset_hash, uwr.downloadHandler.data);
+                    
+                    AssetDeliveryResult result = new AssetDeliveryResult {
+                        LocalFilePath = finalPath,
+                        Format = data.format,
+                        IsCacheHit = false,
+                        AssetHash = data.asset_hash
+                    };
+                    _activeAssets[data.placement_id] = result;
+                    FulfillPendingRequests(data.placement_id, result);
+                }
+                else
+                {
+                    Debug.LogError($"[WireSyndicateEngine] Generic asset download failed for URL {data.asset_url}: {uwr.error}");
+                    FulfillPendingRequests(data.placement_id, null);
+                }
+            }
+        }
+
+        private IEnumerator LoadOrDownloadTexture(WireSyndicateDeliveryData payload)
+        {
+            string safeFileName = payload.asset_url.GetHashCode().ToString() + ".png";
             string localFilePath = Path.Combine(CacheDirectory, safeFileName);
-            string endDateString = DateTime.UtcNow.AddSeconds(payload.ttl_seconds).ToString("o");
+            string endDateString = payload.contract_end_date;
 
             Texture2D textureToApply = null;
 
@@ -305,7 +404,7 @@ namespace WireSyndicate.Core
             }
             else
             {
-                using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(payload.creative.asset_url))
+                using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(payload.asset_url))
                 {
                     yield return uwr.SendWebRequest();
 
@@ -313,11 +412,11 @@ namespace WireSyndicate.Core
                     {
                         textureToApply = DownloadHandlerTexture.GetContent(uwr);
                         File.WriteAllBytes(localFilePath, uwr.downloadHandler.data);
-                        RegisterDownloadedAsset(payload.creative.asset_url, safeFileName, endDateString);
+                        RegisterDownloadedAsset(payload.asset_url, safeFileName, endDateString);
                     }
                     else
                     {
-                        Debug.LogError($"[WireSyndicateEngine] Texture download failed for URL {payload.creative.asset_url}: {uwr.error}");
+                        Debug.LogError($"[WireSyndicateEngine] Texture download failed for URL {payload.asset_url}: {uwr.error}");
                     }
                 }
             }
@@ -326,7 +425,7 @@ namespace WireSyndicate.Core
             {
                 AssetDeliveryResult result = new AssetDeliveryResult {
                     Texture = textureToApply,
-                    Format = payload.creative.format
+                    Format = payload.format
                 };
                 _activeAssets[payload.placement_id] = result;
                 FulfillPendingRequests(payload.placement_id, result);

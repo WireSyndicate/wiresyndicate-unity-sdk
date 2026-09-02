@@ -24,6 +24,8 @@ namespace WireSyndicate.SDK
         public int durationMs;
         public float screenCoverage;
         public SpatialData spatial_data;
+        public bool cache_hit;
+        public string asset_hash;
     }
 
     public class WSTelemetryDispatcher : MonoBehaviour

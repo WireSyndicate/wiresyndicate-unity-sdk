@@ -7,7 +7,7 @@ public class WireSyndicateInitializer : MonoBehaviour
     public static WireSyndicateInitializer Instance { get; private set; }
 
     [Header("Authentication")]
-    [Tooltip("Your Network Key (org_id) from the Developer Portal")]
+    [Tooltip("Your Developer API Key (network_key) from the Developer Portal")]
     public string networkKey;
     [Tooltip("Your Game Key (game_id) from the Developer Portal")]
     public string gameId;
@@ -36,7 +36,7 @@ public class WireSyndicateInitializer : MonoBehaviour
 
         WireSyndicateEngine.Initialize(new WireSyndicateConfig
         {
-            OrgId = networkKey,
+            NetworkKey = networkKey,
             GameId = gameId,
             ApiBaseUrl = apiBaseUrl,
             EnableDebugLogging = false

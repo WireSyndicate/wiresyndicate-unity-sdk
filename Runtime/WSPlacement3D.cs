@@ -39,64 +39,33 @@ namespace WireSyndicate.SDK
                 return;
             }
 
-            StartCoroutine(FetchAndApplyAssetBundle());
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely);
         }
 
-        [System.Serializable]
-        private class ManifestPayload
+        private void ApplyAssetSafely(WireSyndicate.Core.AssetDeliveryResult result)
         {
-            public string game_ready_manifest;
-        }
-
-        private IEnumerator FetchAndApplyAssetBundle()
-        {
-            string url = $"{apiEndpoint}?id={placementId}";
-            using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
+            if (result != null && !string.IsNullOrEmpty(result.LocalFilePath))
             {
-                yield return webRequest.SendWebRequest();
-
-                if (webRequest.result != UnityWebRequest.Result.Success)
-                {
-                    Debug.Log($"[WS] No active contract found or network error for {placementId}: {webRequest.error}. Native fallback mesh retained.");
-                    yield break;
-                }
-
-                string json = webRequest.downloadHandler.text;
-                
-                // Try to parse the JSON manifest
-                ManifestPayload manifest = null;
-                try 
-                {
-                    manifest = JsonUtility.FromJson<ManifestPayload>(json);
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError($"[WS] Failed to parse JSON manifest for {placementId}: {e.Message}");
-                    yield break;
-                }
-
-                if (manifest != null && !string.IsNullOrEmpty(manifest.game_ready_manifest))
-                {
-                    yield return DownloadAndSpawnBundle(manifest.game_ready_manifest);
-                }
-                else
-                {
-                    Debug.LogWarning($"[WS] Parsed manifest was null or empty for {placementId}.");
-                }
+                StartCoroutine(LoadBundleFromCache(result.LocalFilePath));
+            }
+            else
+            {
+                Debug.LogWarning($"[WS] Failed to retrieve or cache 3D asset for placement {placementId}. Fallback mesh retained.");
             }
         }
 
-        private IEnumerator DownloadAndSpawnBundle(string bundleUrl)
+        private IEnumerator LoadBundleFromCache(string localPath)
         {
-            Debug.Log($"[WS] Downloading AssetBundle for placement {placementId}...");
+            string uri = "file://" + localPath.Replace("\\", "/");
+            Debug.Log($"[WS] Loading cached AssetBundle from {uri}...");
             
-            using (UnityWebRequest uwr = UnityWebRequestAssetBundle.GetAssetBundle(bundleUrl))
+            using (UnityWebRequest uwr = UnityWebRequestAssetBundle.GetAssetBundle(uri))
             {
                 yield return uwr.SendWebRequest();
 
                 if (uwr.result != UnityWebRequest.Result.Success)
                 {
-                    Debug.LogError($"[WS] Failed to download AssetBundle for placement {placementId}: {uwr.error}");
+                    Debug.LogError($"[WS] Failed to load AssetBundle from cache for placement {placementId}: {uwr.error}");
                     yield break;
                 }
 
@@ -105,7 +74,7 @@ namespace WireSyndicate.SDK
                 
                 if (bundle == null)
                 {
-                    Debug.LogError($"[WS] Failed to extract AssetBundle from downloaded data for placement: {placementId}. Ensure the URL points to a valid compiled .assetbundle and NOT a .unitypackage.");
+                    Debug.LogError($"[WS] Failed to extract AssetBundle from downloaded data for placement: {placementId}. Ensure the file is a valid .assetbundle.");
                     yield break;
                 }
 
