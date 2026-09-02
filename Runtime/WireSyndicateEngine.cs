@@ -302,7 +302,7 @@ namespace WireSyndicate.Core
                         };
                         _activeAssets[response.data.placement_id] = result;
                         FulfillPendingRequests(response.data.placement_id, result);
-                    } else if (is3D || !string.IsNullOrEmpty(response.data.asset_hash)) {
+                    } else if (is3D) {
                         StartCoroutine(LoadOrDownloadGenericAsset(response.data));
                     } else {
                         StartCoroutine(LoadOrDownloadTexture(response.data));
@@ -395,9 +395,11 @@ namespace WireSyndicate.Core
             string endDateString = payload.contract_end_date;
 
             Texture2D textureToApply = null;
+            bool isCacheHit = false;
 
             if (File.Exists(localFilePath))
             {
+                isCacheHit = true;
                 var loadTask = LoadTextureAsync(localFilePath);
                 yield return new WaitUntil(() => loadTask.IsCompleted);
                 textureToApply = loadTask.Result;
@@ -425,7 +427,9 @@ namespace WireSyndicate.Core
             {
                 AssetDeliveryResult result = new AssetDeliveryResult {
                     Texture = textureToApply,
-                    Format = payload.format
+                    Format = payload.format,
+                    IsCacheHit = isCacheHit,
+                    AssetHash = payload.asset_hash
                 };
                 _activeAssets[payload.placement_id] = result;
                 FulfillPendingRequests(payload.placement_id, result);
