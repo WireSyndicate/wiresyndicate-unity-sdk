@@ -100,7 +100,7 @@ namespace WireSyndicate.Core
                 Debug.Log($"[WireSyndicate] Engine initialized with NetworkKey: {config.NetworkKey}");
         }
 
-        public static void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded)
+        public static void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded, System.Threading.CancellationToken ct = default)
         {
             if (_coreBehaviour == null)
             {
@@ -108,7 +108,7 @@ namespace WireSyndicate.Core
                 return;
             }
 
-            _coreBehaviour.RequestAsset(placementId, onAssetLoaded);
+            _coreBehaviour.RequestAsset(placementId, onAssetLoaded, ct);
         }
     }
 
@@ -438,28 +438,31 @@ namespace WireSyndicate.Core
             }
         }
 
-        public void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded)
+        public void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded, System.Threading.CancellationToken ct = default)
         {
             placementId = placementId != null ? placementId.Trim() : "";
 
             if (_activeAssets.ContainsKey(placementId))
             {
-                onAssetLoaded?.Invoke(_activeAssets[placementId]);
+                if (!ct.IsCancellationRequested)
+                    onAssetLoaded?.Invoke(_activeAssets[placementId]);
             }
             else
             {
-                bool isFirstRequest = !_pendingRequests.ContainsKey(placementId);
-                
-                if (isFirstRequest)
+                if (!_pendingRequests.ContainsKey(placementId))
                 {
                     _pendingRequests[placementId] = new List<Action<AssetDeliveryResult>>();
-                }
-                _pendingRequests[placementId].Add(onAssetLoaded);
-
-                if (isFirstRequest)
-                {
                     StartCoroutine(ResolvePlacement(placementId));
                 }
+                
+                Action<AssetDeliveryResult> wrappedCallback = (result) => {
+                    if (!ct.IsCancellationRequested)
+                    {
+                        onAssetLoaded?.Invoke(result);
+                    }
+                };
+
+                _pendingRequests[placementId].Add(wrappedCallback);
             }
         }
 

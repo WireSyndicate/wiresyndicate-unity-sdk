@@ -87,7 +87,11 @@ namespace WireSyndicate.SDK
             }
 
             // Fetch the asset via the unified engine connection (preserves caching and batching)
+#if UNITY_2022_2_OR_NEWER
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyTextureSafely, this.destroyCancellationToken);
+#else
             WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyTextureSafely);
+#endif
         }
 
         public override Bounds GetBounds()

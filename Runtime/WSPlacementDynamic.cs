@@ -71,7 +71,11 @@ namespace WireSyndicate.SDK
             }
 
             // Route asset fetching directly through the core engine to leverage disk caching and the unified connection.
+#if UNITY_2022_2_OR_NEWER
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely, this.destroyCancellationToken);
+#else
             WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely);
+#endif
         }
 
         public override Bounds GetBounds()

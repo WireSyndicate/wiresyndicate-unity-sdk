@@ -39,7 +39,12 @@ namespace WireSyndicate.SDK
                 return;
             }
 
+            // Delegate asset fulfillment to the central Engine to utilize caching
+#if UNITY_2022_2_OR_NEWER
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely, this.destroyCancellationToken);
+#else
             WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely);
+#endif
         }
 
         private void ApplyAssetSafely(WireSyndicate.Core.AssetDeliveryResult result)
