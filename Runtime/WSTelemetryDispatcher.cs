@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -8,30 +9,22 @@ using UnityEngine.Networking;
 namespace WireSyndicate.SDK
 {
     [System.Serializable]
-    public class SpatialData
-    {
-        public float distance_to_camera;
-        public float angle_of_incidence;
-        public float on_screen_percentage;
-        public float occlusion_percentage;
-    }
-
-    [System.Serializable]
     public class TelemetryPayload
     {
-        public string placementId;
-        public string gameId;
-        public int durationMs;
-        public float screenCoverage;
-        public SpatialData spatial_data;
-        public bool cache_hit;
-        public string asset_hash;
+        public string impression_id;
+        public string placement_id;
+        public string campaign_id;
+        public string bid_id;
+        public string session_id;
+        public string rendered_at;
+        public string player_origin_geom;
+        public string camera_frustum_geom;
+        public string client_signature;
     }
 
     public class WSTelemetryDispatcher : MonoBehaviour
     {
         public static WSTelemetryDispatcher Instance { get; private set; }
-
 
         [Tooltip("The UUID of this specific game, registered in the Developer Dashboard.")]
         public string gameId;
@@ -39,6 +32,10 @@ namespace WireSyndicate.SDK
         private static string _sessionToken;
         private static string _handshakeSecret;
         private static bool _isAuthenticated = false;
+        private static string _sessionId = System.Guid.NewGuid().ToString();
+
+        public static string SessionId => _sessionId;
+        public static string HandshakeSecret => _handshakeSecret;
 
         private void Awake()
         {
@@ -104,8 +101,10 @@ namespace WireSyndicate.SDK
         }
 
         private System.Collections.Concurrent.ConcurrentQueue<TelemetryPayload> _dispatchQueue = new System.Collections.Concurrent.ConcurrentQueue<TelemetryPayload>();
+        private List<TelemetryPayload> _batchList = new List<TelemetryPayload>();
+        private float _batchTimer = 0f;
 
-        public void DispatchImpression(string placementId, float durationSec, float screenCoverage, SpatialData spatialData)
+        public void DispatchImpression(string placementId, string campaignId, string bidId, Vector3 playerOrigin, Vector3[] frustumCorners)
         {
             if (!_isAuthenticated) return;
             if (string.IsNullOrEmpty(gameId))
@@ -114,14 +113,43 @@ namespace WireSyndicate.SDK
                 return;
             }
 
+            string impressionId = System.Guid.NewGuid().ToString();
+            string renderedAt = System.DateTime.UtcNow.ToString("O"); // ISO 8601
+
+            string playerOriginGeom = $"SRID=0;POINT Z({playerOrigin.x} {playerOrigin.y} {playerOrigin.z})";
+            
+            string frustumGeom = "SRID=0;POLYGON Z((";
+            if (frustumCorners != null && frustumCorners.Length >= 3)
+            {
+                for (int i = 0; i < frustumCorners.Length; i++)
+                {
+                    frustumGeom += $"{frustumCorners[i].x} {frustumCorners[i].y} {frustumCorners[i].z}, ";
+                }
+                // Close the polygon
+                frustumGeom += $"{frustumCorners[0].x} {frustumCorners[0].y} {frustumCorners[0].z}";
+            }
+            else
+            {
+                frustumGeom += "0 0 0, 1 0 0, 1 1 0, 0 1 0, 0 0 0"; // Fallback dummy
+            }
+            frustumGeom += "))";
+
+            string payloadToSign = $"{impressionId}:{placementId}:{campaignId}:{bidId}:{renderedAt}";
+            string clientSignature = WSCryptography.GenerateHMAC(payloadToSign, _handshakeSecret);
+
             var payload = new TelemetryPayload
             {
-                placementId = placementId,
-                gameId = this.gameId,
-                durationMs = Mathf.RoundToInt(durationSec * 1000f),
-                screenCoverage = screenCoverage,
-                spatial_data = spatialData
+                impression_id = impressionId,
+                placement_id = placementId,
+                campaign_id = campaignId,
+                bid_id = bidId,
+                session_id = _sessionId,
+                rendered_at = renderedAt,
+                player_origin_geom = playerOriginGeom,
+                camera_frustum_geom = frustumGeom,
+                client_signature = clientSignature
             };
+            
             _dispatchQueue.Enqueue(payload);
         }
 
@@ -146,16 +174,27 @@ namespace WireSyndicate.SDK
 
         private void Update()
         {
-            // Continuously dequeue on the main thread, constrained by the semaphore limit
-            // Prevents socket exhaustion during massive telemetry queue flushes
-            while (_activeRequests < MaxConcurrentRequests && _dispatchQueue.TryDequeue(out var payload))
+            _batchTimer += Time.deltaTime;
+
+            while (_dispatchQueue.TryDequeue(out var payload))
             {
-                _activeRequests++;
-                StartCoroutine(DispatchRoutine(payload));
+                _batchList.Add(payload);
+            }
+
+            if (_batchList.Count > 0 && (_batchTimer >= 5f || _batchList.Count >= 500))
+            {
+                if (_activeRequests < MaxConcurrentRequests)
+                {
+                    _activeRequests++;
+                    var batchCopy = new List<TelemetryPayload>(_batchList);
+                    _batchList.Clear();
+                    _batchTimer = 0f;
+                    StartCoroutine(DispatchRoutine(batchCopy));
+                }
             }
         }
 
-        private IEnumerator DispatchRoutine(TelemetryPayload payload)
+        private IEnumerator DispatchRoutine(List<TelemetryPayload> batch)
         {
             if (!_isAuthenticated)
             {
@@ -164,7 +203,13 @@ namespace WireSyndicate.SDK
                 yield break;
             }
 
-            string jsonPayload = JsonUtility.ToJson(payload);
+            List<string> jsonItems = new List<string>();
+            foreach (var item in batch)
+            {
+                jsonItems.Add(JsonUtility.ToJson(item));
+            }
+            string jsonPayload = "[" + string.Join(",", jsonItems) + "]";
+            
             string signature = WSCryptography.GenerateHMAC(jsonPayload, _handshakeSecret);
 
             string baseUrl = WireSyndicateInitializer.Instance != null && !string.IsNullOrWhiteSpace(WireSyndicateInitializer.Instance.apiBaseUrl)
@@ -187,13 +232,16 @@ namespace WireSyndicate.SDK
 
                 if (request.responseCode == 202)
                 {
-                    Debug.Log($"[WireSyndicate] Telemetry queued successfully at Edge (202 Accepted). Impression: {payload.placementId}");
+                    Debug.Log($"[WireSyndicate] Telemetry queued successfully at Edge (202 Accepted). Batch Size: {batch.Count}");
                 }
                 else
                 {
                     Debug.LogError($"[WireSyndicate] Edge Ingestion Failed ({request.responseCode}): {request.error}. Triggering local fallback queue.");
-                    // NEW: Serialize the dropped payload to disk for offline recovery
-                    WireSyndicate.SDK.Telemetry.WSOfflineTelemetryCache.CachePayload(payload);
+                    // Serialize the dropped payloads to disk for offline recovery
+                    foreach (var payload in batch)
+                    {
+                        WireSyndicate.SDK.Telemetry.WSOfflineTelemetryCache.CachePayload(payload);
+                    }
                 }
             }
 
@@ -228,7 +276,7 @@ namespace WireSyndicate.SDK
             foreach (var payload in cachedPayloads)
             {
                 // Route recovered payloads back through the standard Edge ingestion pipeline
-                // The DispatchRoutine will naturally handle recalculating HMACs if required
+                // The Update loop will batch them back up
                 _dispatchQueue.Enqueue(payload);
             }
         }

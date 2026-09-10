@@ -100,7 +100,7 @@ namespace WireSyndicate.Core
                 Debug.Log($"[WireSyndicate] Engine initialized with NetworkKey: {config.NetworkKey}");
         }
 
-        public static void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded, System.Threading.CancellationToken ct = default)
+        public static void RequestAsset(WireSyndicate.SDK.WSPlacementNode placementNode, Action<AssetDeliveryResult> onAssetLoaded, System.Threading.CancellationToken ct = default)
         {
             if (_coreBehaviour == null)
             {
@@ -108,7 +108,7 @@ namespace WireSyndicate.Core
                 return;
             }
 
-            _coreBehaviour.RequestAsset(placementId, onAssetLoaded, ct);
+            _coreBehaviour.RequestAsset(placementNode, onAssetLoaded, ct);
         }
     }
 
@@ -239,30 +239,54 @@ namespace WireSyndicate.Core
             File.WriteAllText(ManifestPath, json);
         }
 
-        private string GetResolveUrl(string placementId)
+        private IEnumerator ResolvePlacement(WireSyndicate.SDK.WSPlacementNode placementNode)
         {
+            string placementId = placementNode.placementId;
             string baseUrl = !string.IsNullOrEmpty(WireSyndicateEngine.Config.ApiBaseUrl)
                 ? WireSyndicateEngine.Config.ApiBaseUrl.Trim().TrimEnd('/')
                 : "https://api.wiresyndicate.com";
 
-            string url = $"{baseUrl}/api/v1/delivery/resolve?placement_id={placementId}";
-
-            if (Input.location.isEnabledByUser && Input.location.status == LocationServiceStatus.Running)
-            {
-                url += $"&lat={Input.location.lastData.latitude}&lng={Input.location.lastData.longitude}";
-            }
-
-            return url;
-        }
-
-        private IEnumerator ResolvePlacement(string placementId)
-        {
-            string url = GetResolveUrl(placementId);
+            string url = $"{baseUrl}/api/v1/delivery/resolve";
+            
             if (WireSyndicateEngine.Config.EnableDebugLogging)
                 Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{placementId}' at: {url}...");
 
-            using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
+            Bounds bounds = placementNode.GetBounds();
+            string boundsGeom = $"SRID=0;POLYGON Z(({bounds.min.x} {bounds.min.y} {bounds.min.z}, {bounds.max.x} {bounds.min.y} {bounds.min.z}, {bounds.max.x} {bounds.min.y} {bounds.max.z}, {bounds.min.x} {bounds.min.y} {bounds.max.z}, {bounds.min.x} {bounds.min.y} {bounds.min.z}))";
+
+            Vector3 origin = placementNode.transform.position;
+            string originGeom = $"SRID=0;POINT Z({origin.x} {origin.y} {origin.z})";
+
+            string frustumGeom = "SRID=0;POLYGON Z((";
+            Camera cam = Camera.main;
+            if (cam != null) {
+                Vector3[] corners = new Vector3[4];
+                cam.CalculateFrustumCorners(new Rect(0, 0, 1, 1), cam.farClipPlane, Camera.MonoOrStereoscopicEye.Mono, corners);
+                for(int i = 0; i < 4; i++) corners[i] = cam.transform.TransformPoint(corners[i]);
+                Vector3 p = cam.transform.position;
+                frustumGeom += $"{p.x} {p.y} {p.z}, {corners[0].x} {corners[0].y} {corners[0].z}, {corners[1].x} {corners[1].y} {corners[1].z}, {corners[2].x} {corners[2].y} {corners[2].z}, {corners[3].x} {corners[3].y} {corners[3].z}, {p.x} {p.y} {p.z}";
+            } else {
+                frustumGeom += "0 0 0, 1 0 0, 1 1 0, 0 1 0, 0 0 0";
+            }
+            frustumGeom += "))";
+
+            string sessionId = WireSyndicate.SDK.WSTelemetryDispatcher.Instance != null ? 
+                WireSyndicate.SDK.WSTelemetryDispatcher.SessionId : System.Guid.NewGuid().ToString();
+
+            string jsonPayload = $"{{\"placement_id\":\"{placementId}\",\"session_id\":\"{sessionId}\",\"origin_geom\":\"{originGeom}\",\"bounds_geom\":\"{boundsGeom}\",\"camera_frustum_geom\":\"{frustumGeom}\"}}";
+            
+            // Get handshake secret from dispatcher or fallback to empty if unavailable
+            string handshakeSecret = WireSyndicate.SDK.WSTelemetryDispatcher.HandshakeSecret ?? "";
+            string signature = WireSyndicate.SDK.WSCryptography.GenerateHMAC(jsonPayload, handshakeSecret);
+
+            using (UnityWebRequest webRequest = new UnityWebRequest(url, "POST"))
             {
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
+                webRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                webRequest.downloadHandler = new DownloadHandlerBuffer();
+                webRequest.SetRequestHeader("Content-Type", "application/json");
+                webRequest.SetRequestHeader("X-WS-Signature", signature);
+
                 yield return webRequest.SendWebRequest();
 
                 if (webRequest.responseCode == 204)
@@ -438,9 +462,10 @@ namespace WireSyndicate.Core
             }
         }
 
-        public void RequestAsset(string placementId, Action<AssetDeliveryResult> onAssetLoaded, System.Threading.CancellationToken ct = default)
+        public void RequestAsset(WireSyndicate.SDK.WSPlacementNode placementNode, Action<AssetDeliveryResult> onAssetLoaded, System.Threading.CancellationToken ct = default)
         {
-            placementId = placementId != null ? placementId.Trim() : "";
+            if (placementNode == null) return;
+            string placementId = placementNode.placementId != null ? placementNode.placementId.Trim() : "";
 
             if (_activeAssets.ContainsKey(placementId))
             {
@@ -452,7 +477,7 @@ namespace WireSyndicate.Core
                 if (!_pendingRequests.ContainsKey(placementId))
                 {
                     _pendingRequests[placementId] = new List<Action<AssetDeliveryResult>>();
-                    StartCoroutine(ResolvePlacement(placementId));
+                    StartCoroutine(ResolvePlacement(placementNode));
                 }
                 
                 Action<AssetDeliveryResult> wrappedCallback = (result) => {

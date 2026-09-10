@@ -70,11 +70,11 @@ namespace WireSyndicate.SDK
                 return;
             }
 
-            // Route asset fetching directly through the core engine to leverage disk caching and the unified connection.
+// Route asset fetching directly through the core engine to leverage disk caching and the unified connection.
 #if UNITY_2022_2_OR_NEWER
-            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely, this.destroyCancellationToken);
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(this, ApplyAssetSafely, this.destroyCancellationToken);
 #else
-            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely);
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(this, ApplyAssetSafely);
 #endif
         }
 
@@ -182,35 +182,7 @@ namespace WireSyndicate.SDK
                 }
             }
             Debug.Log($"[WireSyndicate] Texture mapped successfully for '{gameObject.name}'.");
-            StartCoroutine(DispatchTelemetry(isCacheHit, assetHash));
-        }
-
-        private IEnumerator DispatchTelemetry(bool isCacheHit, string assetHash)
-        {
-            long vramBytes = UnityEngine.Profiling.Profiler.GetAllocatedMemoryForGraphicsDriver();
-            float vramMb = vramBytes / (1024f * 1024f);
-            bool gcTriggered = false;
-            string sessionId = System.Guid.NewGuid().ToString();
-            
-            string hashPart = string.IsNullOrEmpty(assetHash) ? "null" : $"\"{assetHash}\"";
-            string jsonPayload = $"{{\"placement_id\": \"{placementId}\", \"session_id\": \"{sessionId}\", \"engine\": \"unity\", \"vram_allocated_mb\": {vramMb}, \"gc_triggered\": {(gcTriggered ? "true" : "false")}, \"cache_hit\": {(isCacheHit ? "true" : "false")}, \"asset_hash\": {hashPart}}}";
-            
-            string url = WireSyndicate.Core.WireSyndicateEngine.Config.ApiBaseUrl + "/api/v1/telemetry/client";
-            using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
-            {
-                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
-                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("Content-Type", "application/json");
-
-                yield return request.SendWebRequest();
-
-                if (request.result != UnityWebRequest.Result.Success)
-                {
-                    Debug.LogWarning($"[WireSyndicate] Non-critical telemetry dispatch failed: {request.error}");
-                }
-            }
-        }
+    // Removed legacy _dispatch_telemetry method
 
         private void ApplyVideo(string videoUrl, bool isCacheHit = false, string assetHash = null)
         {

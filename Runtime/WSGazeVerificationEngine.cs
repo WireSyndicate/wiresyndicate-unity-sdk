@@ -301,14 +301,14 @@ namespace WireSyndicate.SDK
             
             if (WSTelemetryDispatcher.Instance != null)
             {
-                SpatialData spatial = new SpatialData
-                {
-                    distance_to_camera = state.lastDistance,
-                    angle_of_incidence = state.lastAngle,
-                    on_screen_percentage = state.peakScreenCoverage,
-                    occlusion_percentage = state.lastOcclusionPercentage
-                };
-                WSTelemetryDispatcher.Instance.DispatchImpression(node.placementId, state.currentDwellTime, state.peakScreenCoverage, spatial);
+                // In a full implementation, campaignId and bidId would be retrieved from the active ad payload on the node
+                string campaignId = ""; 
+                string bidId = "";
+                
+                // playerOrigin is the camera position
+                Vector3 playerOrigin = mainCamera != null ? mainCamera.transform.position : Vector3.zero;
+                
+                WSTelemetryDispatcher.Instance.DispatchImpression(node.placementId, campaignId, bidId, playerOrigin, boundsCorners);
             }
             else
             {

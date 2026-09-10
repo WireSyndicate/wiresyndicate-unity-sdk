@@ -12,12 +12,8 @@ namespace WireSyndicate.SDK
     // THE ARCHITECT'S LESSON: 
     // We optionally look for a Renderer. If one is found, we hide it when the 3D asset loads.
     // If you attach this to an empty GameObject (anchor), it will simply spawn the ad here.
-    public class WSPlacement3D : MonoBehaviour
+    public class WSPlacement3D : WSPlacementNode
     {
-        [Header("Placement Configuration")]
-        [Tooltip("The unique placement_id from the Supabase dashboard.")]
-        public string placementId;
-
         [Header("API Configuration")]
         [Tooltip("The Edge API endpoint for fetching the placement manifest. Example: https://<project-ref>.supabase.co/functions/v1/active-contracts")]
         public string apiEndpoint = "";
@@ -31,8 +27,10 @@ namespace WireSyndicate.SDK
             _fallbackRenderer = GetComponentInChildren<Renderer>();
         }
 
-        private void Start()
+        protected override void Start()
         {
+            base.Start();
+            
             if (string.IsNullOrEmpty(placementId))
             {
                 Debug.LogWarning($"[WS] The 3D placement object '{gameObject.name}' is missing a Placement ID!");
@@ -41,9 +39,9 @@ namespace WireSyndicate.SDK
 
             // Delegate asset fulfillment to the central Engine to utilize caching
 #if UNITY_2022_2_OR_NEWER
-            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely, this.destroyCancellationToken);
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(this, ApplyAssetSafely, this.destroyCancellationToken);
 #else
-            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(placementId, ApplyAssetSafely);
+            WireSyndicate.Core.WireSyndicateEngine.RequestAsset(this, ApplyAssetSafely);
 #endif
         }
 
@@ -122,6 +120,16 @@ namespace WireSyndicate.SDK
                 // but keep the instantiated objects alive (false).
                 bundle.Unload(false);
             }
+        }
+        
+        public override Bounds GetBounds()
+        {
+            if (_spawnedInstance != null)
+            {
+                Renderer r = _spawnedInstance.GetComponentInChildren<Renderer>();
+                if (r != null) return r.bounds;
+            }
+            return base.GetBounds();
         }
     }
 }
