@@ -107,13 +107,35 @@ namespace WireSyndicate.SDK
             return base.GetBounds();
         }
 
+        private void DestroyActiveTexture()
+        {
+            if (_activeTexture != null)
+            {
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                {
+                    UnityEngine.Object.DestroyImmediate(_activeTexture);
+                }
+                else
+                {
+                    UnityEngine.Object.Destroy(_activeTexture);
+                }
+#else
+                UnityEngine.Object.Destroy(_activeTexture);
+#endif
+                _activeTexture = null;
+            }
+        }
+
         private void ApplyAssetSafely(WireSyndicate.Core.AssetDeliveryResult result)
         {
             if (this == null) return;
 
+            ActiveDeliveryResult = result;
+
             if (result != null)
             {
-                Debug.Log($"[WSPlacementDynamic] Asset received successfully. Format: {result.Format}. Applying to '{gameObject.name}'...");
+                Debug.Log($"[WSPlacementDynamic] Asset received successfully. ContentType: {result.ContentType}, Format: {result.Format}. Applying to '{gameObject.name}'...");
                 try
                 {
                     if (result.Format != null && result.Format.ToLower().Contains("video"))
@@ -126,26 +148,44 @@ namespace WireSyndicate.SDK
                         _isVideo = false;
                         ApplyTexture(result.Texture, result.IsCacheHit, result.AssetHash);
                     }
+
+                    // Strict Telemetry Guard: Only activate gaze tracking & telemetry if sponsored with valid impression token
+                    if (result.ContentType == "sponsored" && !string.IsNullOrEmpty(result.ImpressionToken))
+                    {
+                        EnableGazeTracking();
+                        Debug.Log($"[WSPlacementDynamic] Enabled gaze telemetry for sponsored placement {placementId}.");
+                    }
+                    else
+                    {
+                        // House asset or missing token: Suppress telemetry emission and unregister from gaze calculations
+                        DisableGazeTracking();
+                        Debug.Log($"[WSPlacementDynamic] Telemetry suppressed for house/unmonetized placement {placementId}.");
+                    }
                 }
                 catch (System.Exception ex)
                 {
                     Debug.LogError($"[WSPlacementDynamic] FATAL: Failed to apply asset. Exception: {ex.Message}");
+                    DisableGazeTracking();
                 }
             }
             else
             {
                 Debug.LogWarning($"[WireSyndicate] Failed to retrieve asset for placement {placementId}. Fallback visuals retained.");
-                // Prevent synthetic fraud: Unregister this node from the Gaze Engine since the ad didn't load
-                if (WSGazeVerificationEngine.Instance != null)
-                {
-                    WSGazeVerificationEngine.Instance.UnregisterNode(this);
-                    Debug.Log($"[WireSyndicate] Unregistered placement {placementId} from Telemetry to prevent synthetic GVI fraud.");
-                }
+                DisableGazeTracking();
             }
         }
 
         private void ApplyTexture(Texture texture, bool isCacheHit = false, string assetHash = null)
         {
+            if (texture is Texture2D tex2D)
+            {
+                if (_activeTexture != null && _activeTexture != tex2D)
+                {
+                    DestroyActiveTexture();
+                }
+                _activeTexture = tex2D;
+            }
+
             if (targetRenderers != null && targetRenderers.Length > 0)
             {
                 foreach (var targetRenderer in targetRenderers)
@@ -182,7 +222,7 @@ namespace WireSyndicate.SDK
                 }
             }
             Debug.Log($"[WireSyndicate] Texture mapped successfully for '{gameObject.name}'.");
-    // Removed legacy _dispatch_telemetry method
+        }
 
         private void ApplyVideo(string videoUrl, bool isCacheHit = false, string assetHash = null)
         {
@@ -231,10 +271,7 @@ namespace WireSyndicate.SDK
             base.OnDestroy();
             
             // Clean up our texture to prevent VRAM leaks on scene unload
-            if (_activeTexture != null)
-            {
-                Destroy(_activeTexture);
-            }
+            DestroyActiveTexture();
 
             if (_isVideo && targetRenderTexture != null)
             {

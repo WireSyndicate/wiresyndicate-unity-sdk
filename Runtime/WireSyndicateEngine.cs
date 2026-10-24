@@ -23,15 +23,39 @@ namespace WireSyndicate.Core
     }
 
     [Serializable]
+    public class SDKTrackingData
+    {
+        public string impression_token;
+        public string click_token;
+    }
+
+    [Serializable]
+    public class SDKDeliveryResponse
+    {
+        public string placement_id;
+        public string content_type;
+        public string asset_url;
+        public string click_url;
+        public string format;
+        public string prominence;
+        public string monetization_mode;
+        public SDKTrackingData tracking;
+    }
+
+    [Serializable]
     public class WireSyndicateDeliveryData
     {
         public string placement_id;
+        public string content_type;
         public string game_id;
         public string format;
         public string prominence;
         public string asset_url;
+        public string click_url;
+        public string monetization_mode;
         public string asset_hash;
         public string contract_end_date;
+        public SDKTrackingData tracking;
     }
 
     [Serializable]
@@ -64,6 +88,11 @@ namespace WireSyndicate.Core
         public string LocalFilePath;
         public bool IsCacheHit;
         public string AssetHash;
+        public string ContentType;
+        public string ClickUrl;
+        public string MonetizationMode;
+        public string ImpressionToken;
+        public string ClickToken;
     }
 
     public static class WireSyndicateEngine
@@ -246,95 +275,86 @@ namespace WireSyndicate.Core
                 ? WireSyndicateEngine.Config.ApiBaseUrl.Trim().TrimEnd('/')
                 : "https://api.wiresyndicate.com";
 
-            string url = $"{baseUrl}/api/v1/delivery/resolve";
+            string url = $"{baseUrl}/api/v1/sdk/delivery?placement_id={UnityWebRequest.EscapeURL(placementId)}";
             
             if (WireSyndicateEngine.Config.EnableDebugLogging)
-                Debug.Log($"[WireSyndicateEngine] Resolving delivery for placement '{placementId}' at: {url}...");
+                Debug.Log($"[WireSyndicateEngine] Resolving Live-Ops delivery for placement '{placementId}' at: {url}...");
 
-            Bounds bounds = placementNode.GetBounds();
-            string boundsGeom = $"SRID=0;POLYGON Z(({bounds.min.x} {bounds.min.y} {bounds.min.z}, {bounds.max.x} {bounds.min.y} {bounds.min.z}, {bounds.max.x} {bounds.min.y} {bounds.max.z}, {bounds.min.x} {bounds.min.y} {bounds.max.z}, {bounds.min.x} {bounds.min.y} {bounds.min.z}))";
-
-            Vector3 origin = placementNode.transform.position;
-            string originGeom = $"SRID=0;POINT Z({origin.x} {origin.y} {origin.z})";
-
-            string frustumGeom = "SRID=0;POLYGON Z((";
-            Camera cam = Camera.main;
-            if (cam != null) {
-                Vector3[] corners = new Vector3[4];
-                cam.CalculateFrustumCorners(new Rect(0, 0, 1, 1), cam.farClipPlane, Camera.MonoOrStereoscopicEye.Mono, corners);
-                for(int i = 0; i < 4; i++) corners[i] = cam.transform.TransformPoint(corners[i]);
-                Vector3 p = cam.transform.position;
-                frustumGeom += $"{p.x} {p.y} {p.z}, {corners[0].x} {corners[0].y} {corners[0].z}, {corners[1].x} {corners[1].y} {corners[1].z}, {corners[2].x} {corners[2].y} {corners[2].z}, {corners[3].x} {corners[3].y} {corners[3].z}, {p.x} {p.y} {p.z}";
-            } else {
-                frustumGeom += "0 0 0, 1 0 0, 1 1 0, 0 1 0, 0 0 0";
-            }
-            frustumGeom += "))";
-
-            string sessionId = WireSyndicate.SDK.WSTelemetryDispatcher.Instance != null ? 
-                WireSyndicate.SDK.WSTelemetryDispatcher.SessionId : System.Guid.NewGuid().ToString();
-
-            string jsonPayload = $"{{\"placement_id\":\"{placementId}\",\"session_id\":\"{sessionId}\",\"origin_geom\":\"{originGeom}\",\"bounds_geom\":\"{boundsGeom}\",\"camera_frustum_geom\":\"{frustumGeom}\"}}";
-            
-            // Get handshake secret from dispatcher or fallback to empty if unavailable
-            string handshakeSecret = WireSyndicate.SDK.WSTelemetryDispatcher.HandshakeSecret ?? "";
-            string signature = WireSyndicate.SDK.WSCryptography.GenerateHMAC(jsonPayload, handshakeSecret);
-
-            using (UnityWebRequest webRequest = new UnityWebRequest(url, "POST"))
+            using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
             {
-                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
-                webRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
-                webRequest.downloadHandler = new DownloadHandlerBuffer();
-                webRequest.SetRequestHeader("Content-Type", "application/json");
-                webRequest.SetRequestHeader("X-WS-Signature", signature);
+                string networkKey = WireSyndicateEngine.Config.NetworkKey ?? "";
+                if (!string.IsNullOrEmpty(networkKey))
+                {
+                    webRequest.SetRequestHeader("Authorization", $"Bearer {networkKey}");
+                }
+                webRequest.SetRequestHeader("Accept", "application/json");
 
                 yield return webRequest.SendWebRequest();
 
                 if (webRequest.responseCode == 204)
                 {
-                    Debug.LogWarning($"[WireSyndicateEngine] 204 No Content for {placementId}: No active campaigns won the waterfall. Awaiting fallback.");
+                    Debug.LogWarning($"[WireSyndicateEngine] 204 No Content for {placementId}: No active campaigns won the waterfall and no house asset configured.");
                     FulfillPendingRequests(placementId, null);
                     yield break;
                 }
 
                 if (webRequest.result != UnityWebRequest.Result.Success)
                 {
-                    Debug.LogError($"[WireSyndicateEngine] API Error ({webRequest.responseCode}): {webRequest.error}");
+                    Debug.LogError($"[WireSyndicateEngine] Delivery API Error ({webRequest.responseCode}): {webRequest.error}");
                     FulfillPendingRequests(placementId, null);
                     yield break;
                 }
 
                 string json = webRequest.downloadHandler.text;
-                WireSyndicatePayload response = null;
+                SDKDeliveryResponse response = null;
                 try {
-                    response = JsonUtility.FromJson<WireSyndicatePayload>(json);
+                    response = JsonUtility.FromJson<SDKDeliveryResponse>(json);
                 } catch(Exception e) {
-                    Debug.LogError($"[WireSyndicateEngine] JSON Parse Error: {e.Message}");
+                    Debug.LogError($"[WireSyndicateEngine] JSON Parse Error for {placementId}: {e.Message}");
                 }
 
-                if (response != null && response.success && response.data != null && !string.IsNullOrEmpty(response.data.asset_url))
+                if (response != null && !string.IsNullOrEmpty(response.asset_url))
                 {
                     if (WireSyndicateEngine.Config.EnableDebugLogging)
-                        Debug.Log($"[WireSyndicateEngine] Delivery resolved for {placementId}. Extracting asset URL...");
+                        Debug.Log($"[WireSyndicateEngine] Delivery resolved for {placementId}. ContentType: {response.content_type}, Format: {response.format}, URL: {response.asset_url}");
                     
-                    bool isVideo = response.data.format != null && response.data.format.ToLower().Contains("video");
-                    bool is3D = response.data.format != null && (response.data.format.ToLower().Contains("3d") || response.data.asset_url.EndsWith(".glb") || response.data.asset_url.EndsWith(".assetbundle"));
+                    bool isVideo = response.format != null && response.format.ToLower().Contains("video");
+                    bool is3D = response.format != null && (response.format.ToLower().Contains("3d") || response.asset_url.EndsWith(".glb") || response.asset_url.EndsWith(".assetbundle"));
+
+                    WireSyndicateDeliveryData deliveryData = new WireSyndicateDeliveryData
+                    {
+                        placement_id = response.placement_id,
+                        content_type = response.content_type,
+                        format = response.format,
+                        prominence = response.prominence,
+                        asset_url = response.asset_url,
+                        click_url = response.click_url,
+                        monetization_mode = response.monetization_mode,
+                        asset_hash = response.asset_url.GetHashCode().ToString(),
+                        tracking = response.tracking
+                    };
 
                     if (isVideo) {
                         AssetDeliveryResult result = new AssetDeliveryResult {
-                            VideoUrl = response.data.asset_url,
-                            Format = response.data.format
+                            VideoUrl = response.asset_url,
+                            Format = response.format,
+                            ContentType = response.content_type,
+                            ClickUrl = response.click_url,
+                            MonetizationMode = response.monetization_mode,
+                            ImpressionToken = response.tracking != null ? response.tracking.impression_token : null,
+                            ClickToken = response.tracking != null ? response.tracking.click_token : null
                         };
-                        _activeAssets[response.data.placement_id] = result;
-                        FulfillPendingRequests(response.data.placement_id, result);
+                        _activeAssets[response.placement_id] = result;
+                        FulfillPendingRequests(response.placement_id, result);
                     } else if (is3D) {
-                        StartCoroutine(LoadOrDownloadGenericAsset(response.data));
+                        StartCoroutine(LoadOrDownloadGenericAsset(deliveryData));
                     } else {
-                        StartCoroutine(LoadOrDownloadTexture(response.data));
+                        StartCoroutine(LoadOrDownloadTexture(deliveryData));
                     }
                 }
                 else
                 {
-                    Debug.LogError($"[WireSyndicateEngine] Failed to parse delivery resolve response or unsuccessful for {placementId}. Payload: {json}");
+                    Debug.LogError($"[WireSyndicateEngine] Failed to parse delivery response or missing asset_url for {placementId}. Payload: {json}");
                     FulfillPendingRequests(placementId, null);
                 }
             }
@@ -366,18 +386,24 @@ namespace WireSyndicate.Core
 
         private IEnumerator LoadOrDownloadGenericAsset(WireSyndicateDeliveryData data)
         {
-            string cachedPath = WSAssetCache.GetCachedAssetPath(data.asset_hash);
+            string assetHash = !string.IsNullOrEmpty(data.asset_hash) ? data.asset_hash : data.asset_url.GetHashCode().ToString();
+            string cachedPath = WSAssetCache.GetCachedAssetPath(assetHash);
             
             if (!string.IsNullOrEmpty(cachedPath))
             {
                 if (WireSyndicateEngine.Config.EnableDebugLogging)
-                    Debug.Log($"[WireSyndicateEngine] Asset matched hash {data.asset_hash}, loading from cache: {cachedPath}");
+                    Debug.Log($"[WireSyndicateEngine] Asset matched hash {assetHash}, loading from cache: {cachedPath}");
                 
                 AssetDeliveryResult result = new AssetDeliveryResult {
                     LocalFilePath = cachedPath,
                     Format = data.format,
                     IsCacheHit = true,
-                    AssetHash = data.asset_hash
+                    AssetHash = assetHash,
+                    ContentType = data.content_type,
+                    ClickUrl = data.click_url,
+                    MonetizationMode = data.monetization_mode,
+                    ImpressionToken = data.tracking != null ? data.tracking.impression_token : null,
+                    ClickToken = data.tracking != null ? data.tracking.click_token : null
                 };
                 _activeAssets[data.placement_id] = result;
                 FulfillPendingRequests(data.placement_id, result);
@@ -385,7 +411,7 @@ namespace WireSyndicate.Core
             }
 
             if (WireSyndicateEngine.Config.EnableDebugLogging)
-                Debug.Log($"[WireSyndicateEngine] Downloading generic asset for hash {data.asset_hash} from {data.asset_url}");
+                Debug.Log($"[WireSyndicateEngine] Downloading generic asset for hash {assetHash} from {data.asset_url}");
 
             using (UnityWebRequest uwr = UnityWebRequest.Get(data.asset_url))
             {
@@ -393,13 +419,18 @@ namespace WireSyndicate.Core
 
                 if (uwr.result == UnityWebRequest.Result.Success)
                 {
-                    string finalPath = WSAssetCache.CacheAsset(data.asset_hash, uwr.downloadHandler.data);
+                    string finalPath = WSAssetCache.CacheAsset(assetHash, uwr.downloadHandler.data);
                     
                     AssetDeliveryResult result = new AssetDeliveryResult {
                         LocalFilePath = finalPath,
                         Format = data.format,
                         IsCacheHit = false,
-                        AssetHash = data.asset_hash
+                        AssetHash = assetHash,
+                        ContentType = data.content_type,
+                        ClickUrl = data.click_url,
+                        MonetizationMode = data.monetization_mode,
+                        ImpressionToken = data.tracking != null ? data.tracking.impression_token : null,
+                        ClickToken = data.tracking != null ? data.tracking.click_token : null
                     };
                     _activeAssets[data.placement_id] = result;
                     FulfillPendingRequests(data.placement_id, result);
@@ -453,7 +484,12 @@ namespace WireSyndicate.Core
                     Texture = textureToApply,
                     Format = payload.format,
                     IsCacheHit = isCacheHit,
-                    AssetHash = payload.asset_hash
+                    AssetHash = !string.IsNullOrEmpty(payload.asset_hash) ? payload.asset_hash : payload.asset_url.GetHashCode().ToString(),
+                    ContentType = payload.content_type,
+                    ClickUrl = payload.click_url,
+                    MonetizationMode = payload.monetization_mode,
+                    ImpressionToken = payload.tracking != null ? payload.tracking.impression_token : null,
+                    ClickToken = payload.tracking != null ? payload.tracking.click_token : null
                 };
                 _activeAssets[payload.placement_id] = result;
                 FulfillPendingRequests(payload.placement_id, result);

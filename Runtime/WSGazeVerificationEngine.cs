@@ -297,6 +297,18 @@ namespace WireSyndicate.SDK
 
         private void TriggerImpression(WSPlacementNode node, GazeState state)
         {
+            // Strict Telemetry Guard: Suppress telemetry if house asset or missing impression token
+            if (node.ActiveDeliveryResult == null || 
+                node.ActiveDeliveryResult.ContentType == "house" || 
+                string.IsNullOrEmpty(node.ActiveDeliveryResult.ImpressionToken))
+            {
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"[WSGazeVerificationEngine] Telemetry suppressed for house/unmonetized placement {node.placementId}.");
+                }
+                return;
+            }
+
             Debug.Log($"[WSGazeVerificationEngine] Valid GVI captured! {node.placementId} | Duration: {state.currentDwellTime}s | Peak Coverage: {state.peakScreenCoverage * 100}%");
             
             if (WSTelemetryDispatcher.Instance != null)

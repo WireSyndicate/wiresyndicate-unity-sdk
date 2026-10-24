@@ -64,8 +64,7 @@ namespace WireSyndicate.SDK
 
             _propBlock = new MaterialPropertyBlock();
 
-            // Register this node for telemetry
-            WSGazeVerificationEngine.Instance.RegisterNode(this);
+            // Gaze tracking deferred until delivery resolution to prevent running raycasts on house assets
 
             // Spawn Ghost Nodes for additional targets to track gaze without requiring extra setup
             if (additionalGazeTargets != null && additionalGazeTargets.Count > 0)
@@ -108,10 +107,11 @@ namespace WireSyndicate.SDK
 
         private void ApplyTextureSafely(WireSyndicate.Core.AssetDeliveryResult result)
         {
+            ActiveDeliveryResult = result;
             Texture2D texture = result?.Texture;
             if (texture != null)
             {
-                Debug.Log($"[WSSharedMaterialNode] Texture downloaded successfully. Applying to GLOBAL Material '{targetMaterial.name}'...");
+                Debug.Log($"[WSSharedMaterialNode] Texture downloaded successfully. ContentType: {result?.ContentType}. Applying to GLOBAL Material '{targetMaterial.name}'...");
                 try
                 {
                     // Memory Management: Prevent VRAM leaks by destroying the old texture if the ad is rotating
@@ -121,6 +121,16 @@ namespace WireSyndicate.SDK
                     }
 
                     _activeTexture = texture;
+                    
+                    // Strict Telemetry Guard: Only register with Gaze Verification Engine when sponsored with valid impression token
+                    if (result != null && result.ContentType == "sponsored" && !string.IsNullOrEmpty(result.ImpressionToken))
+                    {
+                        EnableGazeTracking();
+                    }
+                    else
+                    {
+                        DisableGazeTracking();
+                    }
                     
                     // THE ARCHITECT'S LESSON: Non-Destructive Global Material Swapping
                     // Modifying targetMaterial directly permanently alters the .mat asset in the Unity Editor.

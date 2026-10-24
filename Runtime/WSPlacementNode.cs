@@ -10,6 +10,8 @@ namespace WireSyndicate.SDK
         [Tooltip("The specific renderer to analyze. If left empty, it will automatically locate one in children.")]
         [SerializeField] private Renderer targetRenderer;
 
+        public WireSyndicate.Core.AssetDeliveryResult ActiveDeliveryResult { get; set; }
+
         protected virtual void Start()
         {
             if (targetRenderer == null)
@@ -23,15 +25,25 @@ namespace WireSyndicate.SDK
                 return;
             }
 
+            // Gaze tracking is deferred until delivery resolves to prevent running raycasts on unmonetized/house assets
+        }
+
+        public void EnableGazeTracking()
+        {
             if (WSGazeVerificationEngine.Instance == null)
             {
                 GameObject engineObj = new GameObject("[WireSyndicate_GazeEngine]");
                 engineObj.AddComponent<WSGazeVerificationEngine>();
-                // The engine's Awake method will automatically set the singleton Instance and apply DontDestroyOnLoad
-                Debug.Log("[WSPlacementNode] Auto-bootstrapped missing WSGazeVerificationEngine.");
             }
-
             WSGazeVerificationEngine.Instance.RegisterNode(this);
+        }
+
+        public void DisableGazeTracking()
+        {
+            if (WSGazeVerificationEngine.Instance != null)
+            {
+                WSGazeVerificationEngine.Instance.UnregisterNode(this);
+            }
         }
 
         public virtual Bounds GetBounds()
@@ -48,10 +60,7 @@ namespace WireSyndicate.SDK
 
         protected virtual void OnDestroy()
         {
-            if (WSGazeVerificationEngine.Instance != null)
-            {
-                WSGazeVerificationEngine.Instance.UnregisterNode(this);
-            }
+            DisableGazeTracking();
         }
     }
 }
