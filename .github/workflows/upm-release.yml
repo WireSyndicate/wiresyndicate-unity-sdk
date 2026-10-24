@@ -2,7 +2,7 @@ name: UPM Receiver Workflow (Unity SDK Sync)
 
 on:
   repository_dispatch:
-    types: [api_contract_update]
+    types: [sdk_release, api_contract_update]
 
 jobs:
   generate_and_release:
@@ -26,7 +26,7 @@ jobs:
           echo "Target Version: ${{ github.event.client_payload.version }}"
           echo "Schema URL: ${{ github.event.client_payload.api_schema_url }}"
           
-          curl -sS -L -o api_schema.json "${{ github.event.client_payload.api_schema_url }}"
+          curl -f -sS -L -o api_schema.json "${{ github.event.client_payload.api_schema_url }}"
           
       - name: Generate C# Models (netstandard2.0)
         run: |
