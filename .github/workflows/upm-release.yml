@@ -15,34 +15,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Setup Node.js v20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          
-      - name: Validate Payload & Download Schema
+
+      - name: Sync C# Contracts from Payload
         run: |
           echo "Target Version: ${{ github.event.client_payload.version }}"
-          echo "Schema URL: ${{ github.event.client_payload.api_schema_url }}"
+          if [ -n "${{ github.event.client_payload.contracts_cs_base64 }}" ]; then
+            echo "Updating Runtime/Contracts.cs from base64 payload..."
+            echo "${{ github.event.client_payload.contracts_cs_base64 }}" | base64 -d > Runtime/Contracts.cs
+          fi
           
-          curl -f -sS -L -o api_schema.json "${{ github.event.client_payload.api_schema_url }}"
-          
-      - name: Generate C# Models (netstandard2.0)
-        run: |
-          # Execute the official OpenAPITools generator via npx
-          npx @openapitools/openapi-generator-cli generate \
-            -i api_schema.json \
-            -g csharp \
-            -o Runtime/Models \
-            --additional-properties=targetFramework=netstandard2.0,packageName=WireSyndicate.SDK.Models
-            
       - name: Update UPM package.json Version
         run: |
           NEW_VERSION="${{ github.event.client_payload.version }}"
-          
-          # Use jq to safely mutate the JSON version property
-          jq ".version = \"$NEW_VERSION\"" package.json > package.tmp.json && mv package.tmp.json package.json
+          if [ -n "$NEW_VERSION" ]; then
+            jq ".version = \"$NEW_VERSION\"" package.json > package.tmp.json && mv package.tmp.json package.json
+          fi
           
       - name: Commit and Tag Release
         run: |
@@ -50,9 +37,22 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add package.json Runtime/Models/
-          git commit -m "chore(release): synchronize OpenAPI models and bump UPM to v$NEW_VERSION [skip ci]"
-          git push origin main
+          git add package.json
+          if [ -f Runtime/Contracts.cs ]; then
+            git add Runtime/Contracts.cs
+          fi
+          if [ -f Runtime/Contracts.cs.meta ]; then
+            git add Runtime/Contracts.cs.meta
+          fi
           
-          git tag "v$NEW_VERSION"
-          git push origin "v$NEW_VERSION"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): bump UPM package to v$NEW_VERSION [skip ci]"
+            git push origin main
+          else
+            echo "Working tree clean, no version change to commit."
+          fi
+          
+          if [ -n "$NEW_VERSION" ]; then
+            git tag -f "v$NEW_VERSION"
+            git push origin "v$NEW_VERSION" --force
+          fi
