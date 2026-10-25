@@ -44,6 +44,10 @@ namespace WireSyndicate.SDK
         [Tooltip("Override specific shader properties (e.g. _Rows, _Tile, _Glow). This is critical if your material uses a custom shader graph for texture atlases.")]
         public System.Collections.Generic.List<ShaderFloatOverride> shaderPropertyOverrides = new System.Collections.Generic.List<ShaderFloatOverride>();
 
+        [Header("Attribution Signals")]
+        [Tooltip("Invoked when attribution metadata is present (promo_code, cta_overlay_text, click_url) upon verified gaze or render.")]
+        public UnityEngine.Events.UnityEvent<string, string, string> OnAttributionGazeLocked;
+
         // Internal references
         private MaterialPropertyBlock _propBlock;
         private Texture2D _activeTexture;
@@ -160,6 +164,13 @@ namespace WireSyndicate.SDK
                         // House asset or missing token: Suppress telemetry emission and unregister from gaze calculations
                         DisableGazeTracking();
                         Debug.Log($"[WSPlacementDynamic] Telemetry suppressed for house/unmonetized placement {placementId}.");
+                    }
+
+                    // Attribution Hook: If promo_code or cta_overlay_text is present, invoke attribution signal
+                    if (result != null && (!string.IsNullOrEmpty(result.PromoCode) || !string.IsNullOrEmpty(result.CtaOverlayText)))
+                    {
+                        OnAttributionGazeLocked?.Invoke(result.PromoCode ?? "", result.CtaOverlayText ?? "", result.ClickUrl ?? "");
+                        Debug.Log($"[WSPlacementDynamic] Emitted OnAttributionGazeLocked for {placementId}: Promo='{result.PromoCode}', CTA='{result.CtaOverlayText}'");
                     }
                 }
                 catch (System.Exception ex)

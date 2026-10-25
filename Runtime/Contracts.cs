@@ -59,6 +59,8 @@ namespace WireSyndicate.SDK.Contracts
         public string content_type;
         public string asset_url;
         public string click_url;
+        public string promo_code;
+        public string cta_overlay_text;
         public string format;
         public string prominence;
         public string monetization_mode;

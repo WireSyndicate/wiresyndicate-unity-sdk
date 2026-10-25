@@ -52,6 +52,8 @@ namespace WireSyndicate.Core
         public string prominence;
         public string asset_url;
         public string click_url;
+        public string promo_code;
+        public string cta_overlay_text;
         public string monetization_mode;
         public string asset_hash;
         public string contract_end_date;
@@ -90,6 +92,8 @@ namespace WireSyndicate.Core
         public string AssetHash;
         public string ContentType;
         public string ClickUrl;
+        public string PromoCode;
+        public string CtaOverlayText;
         public string MonetizationMode;
         public string ImpressionToken;
         public string ClickToken;
@@ -329,6 +333,8 @@ namespace WireSyndicate.Core
                         prominence = response.prominence,
                         asset_url = response.asset_url,
                         click_url = response.click_url,
+                        promo_code = response.promo_code,
+                        cta_overlay_text = response.cta_overlay_text,
                         monetization_mode = response.monetization_mode,
                         asset_hash = response.asset_url.GetHashCode().ToString(),
                         tracking = response.tracking
@@ -340,6 +346,8 @@ namespace WireSyndicate.Core
                             Format = response.format,
                             ContentType = response.content_type,
                             ClickUrl = response.click_url,
+                            PromoCode = response.promo_code,
+                            CtaOverlayText = response.cta_overlay_text,
                             MonetizationMode = response.monetization_mode,
                             ImpressionToken = response.tracking != null ? response.tracking.impression_token : null,
                             ClickToken = response.tracking != null ? response.tracking.click_token : null
@@ -401,6 +409,8 @@ namespace WireSyndicate.Core
                     AssetHash = assetHash,
                     ContentType = data.content_type,
                     ClickUrl = data.click_url,
+                    PromoCode = data.promo_code,
+                    CtaOverlayText = data.cta_overlay_text,
                     MonetizationMode = data.monetization_mode,
                     ImpressionToken = data.tracking != null ? data.tracking.impression_token : null,
                     ClickToken = data.tracking != null ? data.tracking.click_token : null
@@ -428,6 +438,8 @@ namespace WireSyndicate.Core
                         AssetHash = assetHash,
                         ContentType = data.content_type,
                         ClickUrl = data.click_url,
+                        PromoCode = data.promo_code,
+                        CtaOverlayText = data.cta_overlay_text,
                         MonetizationMode = data.monetization_mode,
                         ImpressionToken = data.tracking != null ? data.tracking.impression_token : null,
                         ClickToken = data.tracking != null ? data.tracking.click_token : null
@@ -487,6 +499,8 @@ namespace WireSyndicate.Core
                     AssetHash = !string.IsNullOrEmpty(payload.asset_hash) ? payload.asset_hash : payload.asset_url.GetHashCode().ToString(),
                     ContentType = payload.content_type,
                     ClickUrl = payload.click_url,
+                    PromoCode = payload.promo_code,
+                    CtaOverlayText = payload.cta_overlay_text,
                     MonetizationMode = payload.monetization_mode,
                     ImpressionToken = payload.tracking != null ? payload.tracking.impression_token : null,
                     ClickToken = payload.tracking != null ? payload.tracking.click_token : null
