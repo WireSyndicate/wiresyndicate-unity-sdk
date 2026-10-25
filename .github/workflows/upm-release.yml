@@ -8,6 +8,8 @@ jobs:
   generate_and_release:
     name: Generate C# Models and Release UPM
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: contains(github.event.client_payload.target_engines, 'unity')
     
     steps:
